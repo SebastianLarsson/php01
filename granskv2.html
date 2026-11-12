@@ -1,0 +1,2708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Serverless PDF Comment Reader (v6 - Search, PDF Badges &amp; Live Sync)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #1e293b;
+      --bg-panel: #f8fafc;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --green: #16a34a;
+      --text: #0f172a;
+      --text-muted: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      background: #e2e8f0;
+    }
+
+    header {
+      background: var(--bg-dark);
+      color: #fff;
+      padding: 0.7rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      z-index: 20;
+    }
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+    header label {
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    header input[type="text"], header select {
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #fff;
+      font-size: 0.85rem;
+    }
+    #pdf-select {
+      max-width: 340px;
+    }
+    #pdf-select optgroup {
+      background: #1e293b;
+      color: #93c5fd;
+      font-style: normal;
+      font-weight: 600;
+    }
+    #pdf-select option {
+      background: #0f172a;
+      color: #fff;
+      font-weight: normal;
+    }
+    .btn {
+      padding: 0.45rem 0.85rem;
+      border-radius: 4px;
+      border: none;
+      background: var(--accent);
+      color: white;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn.secondary { background: #475569; }
+    .btn.secondary:hover:not(:disabled) { background: #334155; }
+    .btn.save-btn { background: var(--green); }
+    .btn.save-btn.unsaved { background: #ea580c; }
+    .btn.toggle-off { background: #475569; color: #94a3b8; }
+
+    /* Sync & Auto-save indicator badge */
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: #0f172a;
+      border: 1px solid #475569;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .sync-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .sync-dot.active {
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+    }
+    .autosave-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+      user-select: none;
+      padding-left: 0.35rem;
+      border-left: 1px solid #334155;
+      color: #e2e8f0;
+    }
+    .autosave-label input[type="checkbox"] {
+      accent-color: var(--green);
+      cursor: pointer;
+    }
+    .autosave-label.disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Mode Toggle Group */
+    .mode-toggle {
+      display: inline-flex;
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 5px;
+      padding: 2px;
+    }
+    .mode-btn {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .mode-btn:hover:not(.active) {
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    #pdf-viewport {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+    .empty-state {
+      margin: auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      max-width: 620px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+    .empty-state h3 { margin-bottom: 0.75rem; }
+    .empty-state ol { padding-left: 1.25rem; color: var(--text-muted); font-size: 0.92rem; }
+    .empty-state li { margin-bottom: 0.5rem; }
+
+    .page-container {
+      position: relative;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      background: white;
+      line-height: 0;
+      user-select: none;
+    }
+    .comment-overlay {
+      position: absolute;
+      inset: 0;
+      cursor: crosshair;
+      z-index: 5;
+    }
+
+    .annotation-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 6;
+    }
+    .comment-polygon {
+      pointer-events: auto;
+      cursor: pointer;
+      stroke-width: 2;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+      fill-opacity: 0.12;
+      transition: fill-opacity 0.15s ease, stroke-width 0.15s ease, opacity 0.15s ease;
+    }
+    .comment-polygon.own-polygon {
+      cursor: move;
+    }
+    .comment-polygon.resolved {
+      stroke-dasharray: 4, 3;
+      fill-opacity: 0.05;
+      opacity: 0.65;
+    }
+    .comment-polygon:hover, .comment-polygon.active {
+      fill-opacity: 0.30;
+      stroke-width: 3;
+      opacity: 1;
+    }
+    .draft-polygon {
+      fill-opacity: 0.12;
+      stroke-width: 2;
+      stroke-dasharray: 5, 4;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+    .draft-vertex {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--accent);
+      transform: translate(-50%, -50%);
+      z-index: 12;
+      pointer-events: none;
+    }
+    .draft-vertex.start-vertex {
+      width: 14px;
+      height: 14px;
+      pointer-events: auto;
+      cursor: pointer;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+      transition: transform 0.15s ease;
+    }
+    .draft-vertex.start-vertex:hover {
+      transform: translate(-50%, -50%) scale(1.35);
+      background: var(--accent);
+    }
+
+    .edit-vertex-handle {
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--accent);
+      transform: translate(-50%, -50%);
+      z-index: 16;
+      cursor: nwse-resize;
+      opacity: 0;
+      pointer-events: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      transition: opacity 0.15s ease, transform 0.12s ease;
+    }
+    .edit-vertex-handle.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .edit-vertex-handle:hover {
+      transform: translate(-50%, -50%) scale(1.35);
+      background: #f8fafc;
+    }
+
+    .comment-pin {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border-radius: 50% 50% 50% 0;
+      transform: translate(-50%, -100%) rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      border: 2px solid #fff;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      z-index: 10;
+    }
+    .comment-pin.own-pin {
+      cursor: move;
+    }
+    .comment-pin.resolved {
+      opacity: 0.65;
+      border-color: #bbf7d0;
+    }
+    .comment-pin.polygon-badge {
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+    }
+    .comment-pin:hover, .comment-pin.active {
+      transform: translate(-50%, -100%) rotate(-45deg) scale(1.25);
+      opacity: 1;
+      z-index: 15;
+    }
+    .comment-pin.polygon-badge:hover, .comment-pin.polygon-badge.active {
+      transform: translate(-50%, -50%) scale(1.25);
+      opacity: 1;
+      z-index: 15;
+    }
+    .comment-pin span {
+      transform: rotate(45deg);
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      pointer-events: none;
+    }
+    .comment-pin.polygon-badge span {
+      transform: none;
+    }
+
+    .comment-popover {
+      position: absolute;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      width: 240px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      z-index: 30;
+      line-height: 1.4;
+      cursor: default;
+    }
+    .comment-popover textarea {
+      width: 100%;
+      height: 70px;
+      padding: 0.4rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      resize: vertical;
+      margin-bottom: 0.5rem;
+    }
+    .popover-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
+    }
+
+    aside {
+      width: 380px;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+    .sidebar-header {
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+    }
+    .sidebar-filters {
+      padding: 0.6rem 1rem;
+      background: #f1f5f9;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .search-box-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-box-row input[type="search"] {
+      width: 100%;
+      padding: 0.38rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      background: #fff;
+      color: var(--text);
+    }
+    .filter-selects-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .filter-selects-row select {
+      flex: 1;
+      padding: 0.35rem 0.45rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      background: #fff;
+      color: var(--text);
+    }
+    #comments-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .comment-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-size: 0.875rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      cursor: pointer;
+      transition: opacity 0.15s ease, background 0.15s ease;
+    }
+    .comment-card.resolved {
+      background: #f8fafc;
+      opacity: 0.82;
+    }
+    .comment-card:hover, .comment-card.active {
+      background: #f1f5f9;
+      opacity: 1;
+    }
+    .comment-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .comment-author { font-weight: 700; color: var(--text); }
+    .comment-type-badge {
+      font-size: 0.68rem;
+      background: #e2e8f0;
+      color: #334155;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      margin-left: 0.3rem;
+      font-weight: 600;
+    }
+    .comment-body {
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .comment-card.resolved .comment-body {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+    .resolved-info {
+      margin-top: 0.4rem;
+      font-size: 0.72rem;
+      color: var(--green);
+      font-weight: 600;
+    }
+    .card-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+    .resolve-btn, .reply-toggle-btn, .edit-btn, .delete-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      padding: 0.12rem 0.38rem;
+      font-size: 0.73rem;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .resolve-btn {
+      color: #475569;
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+    .resolve-btn:hover {
+      background: #dcfce7;
+      color: #15803d;
+      border-color: #86efac;
+    }
+    .resolve-btn.is-resolved {
+      background: #dcfce7;
+      color: #15803d;
+      border-color: #86efac;
+      font-weight: 600;
+    }
+    .reply-toggle-btn {
+      color: #334155;
+      border-color: #e2e8f0;
+      background: #f8fafc;
+    }
+    .reply-toggle-btn:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .edit-btn { color: var(--accent); }
+    .edit-btn:hover { background: #dbeafe; }
+    .delete-btn { color: #ef4444; }
+    .delete-btn:hover { background: #fee2e2; }
+
+    /* Replies thread inside card */
+    .replies-container {
+      margin-top: 0.55rem;
+      padding-top: 0.45rem;
+      border-top: 1px dashed #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .reply-item {
+      background: #f8fafc;
+      border-left: 3px solid #94a3b8;
+      padding: 0.35rem 0.5rem;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.8rem;
+    }
+    .reply-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 0.15rem;
+    }
+    .reply-author {
+      font-weight: 700;
+      color: var(--text);
+    }
+    .reply-text {
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+    }
+    .reply-form {
+      margin-top: 0.5rem;
+      padding-top: 0.45rem;
+      border-top: 1px solid #e2e8f0;
+      cursor: default;
+    }
+    .reply-form textarea {
+      width: 100%;
+      height: 54px;
+      padding: 0.35rem 0.45rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      resize: vertical;
+      margin-bottom: 0.35rem;
+    }
+    .reply-form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .btn.small-btn {
+      padding: 0.25rem 0.55rem;
+      font-size: 0.75rem;
+    }
+    .btn.resolve-send-btn {
+      background: var(--green);
+    }
+    .btn.resolve-send-btn:hover {
+      background: #15803d;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="toolbar-group">
+      <label>
+        User:
+        <input type="text" id="username-input" value="alice" style="width: 90px;" />
+      </label>
+
+      <button type="button" id="live-folder-btn" class="btn" title="Open folder with live auto-sync and direct saving (requires HTTPS or localhost)">
+        🔄 1A. Live Sync Folder
+      </button>
+
+      <label class="btn secondary" title="Fallback static folder loader (works on file://)">
+        1B. Static Folder
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;" />
+      </label>
+
+      <label class="btn secondary" title="Pick individual PDF and JSON files">
+        1C. Files
+        <input type="file" id="files-input" multiple accept=".pdf,.json" style="display: none;" />
+      </label>
+
+      <select id="pdf-select" disabled>
+        <option value="">-- Loaded PDFs --</option>
+      </select>
+
+      <div class="mode-toggle" title="Choose annotation tool">
+        <button type="button" id="mode-pin-btn" class="mode-btn active">📍 Pin</button>
+        <button type="button" id="mode-box-btn" class="mode-btn">▭ Box</button>
+        <button type="button" id="mode-poly-btn" class="mode-btn">⬠ Polygon</button>
+      </div>
+    </div>
+
+    <div class="toolbar-group">
+      <div class="sync-badge" title="Automatic folder polling and auto-save settings (active in 1A. Live Sync mode)">
+        <span id="sync-dot" class="sync-dot"></span>
+        <span>Auto-sync:</span>
+        <select id="sync-interval-select" disabled style="padding: 0.15rem 0.3rem; font-size: 0.78rem;">
+          <option value="0">Off</option>
+          <option value="5000">5s</option>
+          <option value="10000" selected>10s</option>
+          <option value="30000">30s</option>
+        </select>
+        <button type="button" id="sync-now-btn" class="btn secondary" disabled style="padding: 0.2rem 0.45rem; font-size: 0.75rem;" title="Poll folder for changes right now">
+          ↻
+        </button>
+        <label id="autosave-label" class="autosave-label disabled" title="Automatically write .comments.json to folder whenever you add, reply, edit, move, resolve, or delete a comment">
+          <input type="checkbox" id="autosave-checkbox" checked disabled />
+          Auto-save
+        </label>
+      </div>
+
+      <button id="toggle-visibility-btn" class="btn secondary" disabled title="Toggle visibility of all comments on the page">
+        👁️ Dölj kommentarer
+      </button>
+      <span id="status-text" class="status-text">Ready</span>
+      <label>
+        Zoom:
+        <select id="zoom-select" disabled>
+          <option value="1">100%</option>
+          <option value="1.25" selected>125%</option>
+          <option value="1.5">150%</option>
+        </select>
+      </label>
+      <button id="save-btn" class="btn save-btn" disabled>
+        Save My Comments
+      </button>
+      <button id="export-excel-btn" class="btn secondary" disabled title="Export comments for the currently open PDF to Excel">
+        Export PDF (.csv)
+      </button>
+      <button id="export-all-pdfs-btn" class="btn secondary" disabled title="Export comments from ALL loaded PDFs and subfolders into one combined Excel file">
+        Export Folder (.csv)
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div id="pdf-viewport">
+      <div class="empty-state">
+        <h3>Zero-Server PDF Reader (v6 – Sök, PDF-Badges, Svarstrådar &amp; Live-Synk)</h3>
+        <ol>
+          <li>Skriv ditt namn i rutan <strong>User</strong> längst upp till vänster.</li>
+          <li>Klicka på <strong>🔄 1A. Live Sync Folder</strong> (kräver Chrome/Edge över <code>https://</code> eller <code>http://localhost</code>) för att koppla en gemensam mapp med automatisk bakgrundssynk och direktsparning.</li>
+          <li>I rullgardinsmenyn för PDF-filer ser du direkt en badge för varje dokument: <code>🟠 (X öppna / Y)</code> eller <code>✅ (Y klara)</code>.</li>
+          <li>Använd sökfältet och filtren högst upp i sidopanelen för att söka i fritext bland kommentarer och svar, eller filtrera på granskare och status.</li>
+          <li>Klicka på <strong>💬 Svara</strong> på ett kort för att svara i tråden eller välj <strong>✓ Svara &amp; Klara</strong> för att bocka av punkten direkt.</li>
+        </ol>
+      </div>
+    </div>
+
+    <aside>
+      <div class="sidebar-header">
+        <span>Comments (<span id="comment-count">0</span>)</span>
+        <span id="sidebar-hint" style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">Click page to add pin</span>
+      </div>
+      <div class="sidebar-filters">
+        <div class="search-box-row">
+          <input type="search" id="search-input" placeholder="🔍 Sök i kommentarer, svar, författare..." />
+        </div>
+        <div class="filter-selects-row">
+          <select id="filter-author-select" title="Filtrera på granskare">
+            <option value="all">👤 Alla användare</option>
+          </select>
+          <select id="filter-status-select" title="Filtrera på status">
+            <option value="all">📋 Alla statusar</option>
+            <option value="open">⭕ Endast öppna</option>
+            <option value="resolved">✅ Endast klara</option>
+          </select>
+        </div>
+      </div>
+      <div id="comments-list"></div>
+    </aside>
+  </main>
+
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    let loadedFilesMap = new Map();
+    let fileLastModifiedMap = new Map();
+    let directoryHandle = null;
+    let syncTimerId = null;
+    let isPolling = false;
+    let hasUnsavedChanges = false;
+
+    // Auto-save queue state
+    let autoSaveDebounceTimer = null;
+    let isSavingToDisk = false;
+    let pendingSaveAfterCurrent = false;
+
+    let loadedPdfKeys = [];
+    // Stores comment summary counts per PDF key: Map<pdfKey, { total: number, open: number }>
+    let pdfSummaryCountsMap = new Map();
+    let currentPdfKey = '';
+    let currentPdfName = '';
+    let pdfDoc = null;
+    let currentScale = 1.25;
+    let allComments = [];
+    // Cross-user status updates stored by current user: { [commentId]: { resolved, updatedAt, updatedBy } }
+    let myStatusUpdates = {};
+    // Cross-user replies authored by current user: Array<{ id, parentId, author, content, createdAt, color }>
+    let myReplies = [];
+    let activeReplyCommentId = null;
+    let activePopover = null;
+
+    let currentTool = 'pin';
+    let activePolygonDraft = null;
+    let activeBoxDraft = null;
+
+    let activeEditDrag = null;
+    let suppressNextOverlayClick = false;
+    let lockedCommentId = null;
+    let commentsVisible = true;
+
+    let filterAuthor = 'all';
+    let filterStatus = 'all';
+    let searchQuery = '';
+
+    const usernameInput = document.getElementById('username-input');
+    const liveFolderBtn = document.getElementById('live-folder-btn');
+    const folderInput = document.getElementById('folder-input');
+    const filesInput = document.getElementById('files-input');
+    const pdfSelect = document.getElementById('pdf-select');
+    const syncIntervalSelect = document.getElementById('sync-interval-select');
+    const syncNowBtn = document.getElementById('sync-now-btn');
+    const syncDot = document.getElementById('sync-dot');
+    const autosaveCheckbox = document.getElementById('autosave-checkbox');
+    const autosaveLabel = document.getElementById('autosave-label');
+    const zoomSelect = document.getElementById('zoom-select');
+    const saveBtn = document.getElementById('save-btn');
+    const exportExcelBtn = document.getElementById('export-excel-btn');
+    const exportAllPdfsBtn = document.getElementById('export-all-pdfs-btn');
+    const toggleVisibilityBtn = document.getElementById('toggle-visibility-btn');
+    const statusText = document.getElementById('status-text');
+    const pdfViewport = document.getElementById('pdf-viewport');
+    const commentsList = document.getElementById('comments-list');
+    const commentCount = document.getElementById('comment-count');
+    const sidebarHint = document.getElementById('sidebar-hint');
+    const searchInput = document.getElementById('search-input');
+    const filterAuthorSelect = document.getElementById('filter-author-select');
+    const filterStatusSelect = document.getElementById('filter-status-select');
+    const modePinBtn = document.getElementById('mode-pin-btn');
+    const modeBoxBtn = document.getElementById('mode-box-btn');
+    const modePolyBtn = document.getElementById('mode-poly-btn');
+
+    function setToolMode(mode) {
+      currentTool = mode;
+      modePinBtn.classList.toggle('active', mode === 'pin');
+      modeBoxBtn.classList.toggle('active', mode === 'box');
+      modePolyBtn.classList.toggle('active', mode === 'polygon');
+
+      if (mode === 'pin') {
+        sidebarHint.textContent = 'Click page to add pin';
+      } else if (mode === 'box') {
+        sidebarHint.textContent = 'Drag to draw box (Shift = square)';
+      } else {
+        sidebarHint.textContent = 'Click corners • Enter/DblClick to finish';
+      }
+
+      cancelPolygonDraft();
+      cancelBoxDraft();
+      closeActivePopover();
+    }
+
+    modePinBtn.addEventListener('click', () => setToolMode('pin'));
+    modeBoxBtn.addEventListener('click', () => setToolMode('box'));
+    modePolyBtn.addEventListener('click', () => setToolMode('polygon'));
+
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.trim().toLowerCase();
+      renderAllPinsAndSidebar();
+    });
+
+    filterAuthorSelect.addEventListener('change', (e) => {
+      filterAuthor = e.target.value;
+      renderAllPinsAndSidebar();
+    });
+
+    filterStatusSelect.addEventListener('change', (e) => {
+      filterStatus = e.target.value;
+      renderAllPinsAndSidebar();
+    });
+
+    toggleVisibilityBtn.addEventListener('click', () => {
+      commentsVisible = !commentsVisible;
+      if (commentsVisible) {
+        toggleVisibilityBtn.textContent = '👁️ Dölj kommentarer';
+        toggleVisibilityBtn.classList.remove('toggle-off');
+      } else {
+        toggleVisibilityBtn.textContent = '👁️‍🗨️ Visa kommentarer';
+        toggleVisibilityBtn.classList.add('toggle-off');
+        closeActivePopover();
+      }
+      renderAllPinsAndSidebar();
+    });
+
+    function getAuthorColor(username) {
+      const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0891b2', '#be185d'];
+      let hash = 0;
+      for (let i = 0; i < username.length; i++) {
+        hash = username.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return palette[Math.abs(hash) % palette.length];
+    }
+
+    function getCleanUsername() {
+      const raw = usernameInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      return raw || 'anonymous';
+    }
+
+    function getRelativeFileKey(file) {
+      if (file.webkitRelativePath) {
+        const normalized = file.webkitRelativePath.replace(/\\/g, '/');
+        const slashIdx = normalized.indexOf('/');
+        return slashIdx !== -1 ? normalized.slice(slashIdx + 1) : normalized;
+      }
+      return file.name;
+    }
+
+    function splitFolderAndName(fileKey) {
+      const lastSlash = fileKey.lastIndexOf('/');
+      if (lastSlash === -1) {
+        return { folder: '', fileName: fileKey };
+      }
+      return {
+        folder: fileKey.slice(0, lastSlash),
+        fileName: fileKey.slice(lastSlash + 1)
+      };
+    }
+
+    /* --- PDF DROPDOWN BADGE HELPERS --- */
+    function formatPdfBadgeSuffix(stats) {
+      if (!stats || stats.total === 0) return '';
+      if (stats.open > 0) {
+        return ` 🟠 (${stats.open} öppna / ${stats.total})`;
+      }
+      return ` ✅ (${stats.total} klara)`;
+    }
+
+    async function computeAllPdfSummaryCounts() {
+      for (const pdfKey of loadedPdfKeys) {
+        if (pdfKey === currentPdfKey && pdfDoc) {
+          const total = allComments.length;
+          const open = allComments.filter(c => !c.resolved).length;
+          pdfSummaryCountsMap.set(pdfKey, { total, open });
+        } else {
+          const merged = await getMergedCommentsForPdfKey(pdfKey);
+          const total = merged.length;
+          const open = merged.filter(c => !c.resolved).length;
+          pdfSummaryCountsMap.set(pdfKey, { total, open });
+        }
+      }
+      refreshPdfSelectOptionLabels();
+    }
+
+    function updateCurrentPdfSummaryBadge() {
+      if (!currentPdfKey) return;
+      const total = allComments.length;
+      const open = allComments.filter(c => !c.resolved).length;
+      pdfSummaryCountsMap.set(currentPdfKey, { total, open });
+      refreshPdfSelectOptionLabels();
+    }
+
+    function refreshPdfSelectOptionLabels() {
+      const hasSubfolders = loadedPdfKeys.some(k => k.includes('/'));
+      const options = pdfSelect.querySelectorAll('option');
+      options.forEach(opt => {
+        const key = opt.value;
+        if (!key) return;
+        const { folder, fileName } = splitFolderAndName(key);
+        const baseLabel = (hasSubfolders && folder) ? `${folder} / ${fileName}` : fileName;
+        const badge = formatPdfBadgeSuffix(pdfSummaryCountsMap.get(key));
+        opt.textContent = baseLabel + badge;
+      });
+    }
+
+    /* --- 1A. LIVE SYNC DIRECTORY PICKER (File System Access API) --- */
+    liveFolderBtn.addEventListener('click', async () => {
+      if (!window.showDirectoryPicker) {
+        alert(
+          'Din webbläsare eller nuvarande adress tillåter inte showDirectoryPicker().\n\n' +
+          'Kontrollera att:\n' +
+          '1. Du använder Chrome eller Edge.\n' +
+          '2. Sidan är öppnad via https:// eller http://localhost (inte file://).\n\n' +
+          'Du kan alltid använda "1B. Static Folder" som reservlösning.'
+        );
+        return;
+      }
+
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        directoryHandle = handle;
+        syncIntervalSelect.disabled = false;
+        syncNowBtn.disabled = false;
+        autosaveCheckbox.disabled = false;
+        autosaveLabel.classList.remove('disabled');
+
+        await scanDirectoryHandle(true);
+        configureAutoSyncTimer();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Error selecting live folder:', err);
+          alert('Kunde inte öppna mappen: ' + err.message);
+        }
+      }
+    });
+
+    autosaveCheckbox.addEventListener('change', () => {
+      if (autosaveCheckbox.checked && hasUnsavedChanges && directoryHandle) {
+        scheduleAutoSave();
+      }
+    });
+
+    async function readDirectoryRecursively(dirHandle, prefix = '', outFilesMap = new Map(), outModifiedMap = new Map()) {
+      for await (const entry of dirHandle.values()) {
+        const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.kind === 'file') {
+          const lower = entry.name.toLowerCase();
+          if (lower.endsWith('.pdf') || lower.endsWith('.comments.json')) {
+            const file = await entry.getFile();
+            outFilesMap.set(relPath, file);
+            outModifiedMap.set(relPath, file.lastModified);
+          }
+        } else if (entry.kind === 'directory') {
+          await readDirectoryRecursively(entry, relPath, outFilesMap, outModifiedMap);
+        }
+      }
+      return { outFilesMap, outModifiedMap };
+    }
+
+    async function scanDirectoryHandle(isInitialLoad = false) {
+      if (!directoryHandle || isPolling || isSavingToDisk) return;
+      isPolling = true;
+
+      try {
+        const { outFilesMap, outModifiedMap } = await readDirectoryRecursively(directoryHandle);
+
+        let hasFileChanges = false;
+        if (outModifiedMap.size !== fileLastModifiedMap.size) {
+          hasFileChanges = true;
+        } else {
+          for (const [key, modTime] of outModifiedMap.entries()) {
+            if (fileLastModifiedMap.get(key) !== modTime) {
+              hasFileChanges = true;
+              break;
+            }
+          }
+        }
+
+        loadedFilesMap = outFilesMap;
+        fileLastModifiedMap = outModifiedMap;
+
+        if (isInitialLoad) {
+          await rebuildPdfDropdownAndLoadFirst();
+        } else if (hasFileChanges) {
+          await refreshCommentsFromPoll();
+        }
+      } catch (err) {
+        console.warn('Live sync poll warning:', err);
+      } finally {
+        isPolling = false;
+      }
+    }
+
+    async function refreshCommentsFromPoll() {
+      const newPdfKeys = [];
+      for (const [key, file] of loadedFilesMap.entries()) {
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+          newPdfKeys.push(key);
+        }
+      }
+      sortPdfKeys(newPdfKeys);
+
+      if (JSON.stringify(newPdfKeys) !== JSON.stringify(loadedPdfKeys)) {
+        loadedPdfKeys = newPdfKeys;
+        populatePdfSelectDOM(loadedPdfKeys);
+        if (currentPdfKey && loadedPdfKeys.includes(currentPdfKey)) {
+          pdfSelect.value = currentPdfKey;
+        }
+      }
+
+      if (!currentPdfKey) return;
+
+      // Pause UI refresh if user is actively typing a reply or drawing/editing
+      if (activePopover || activePolygonDraft || activeBoxDraft || activeEditDrag || isSavingToDisk || activeReplyCommentId) {
+        await computeAllPdfSummaryCounts();
+        return;
+      }
+
+      const { merged, userStatusMap, userRepliesMap } = await getMergedCommentsAndStatusForPdfKey(currentPdfKey);
+      const currentUser = getCleanUsername();
+
+      if (hasUnsavedChanges) {
+        const myInMemory = allComments.filter(c => c.author === currentUser);
+        const othersFromDisk = merged.filter(c => c.author !== currentUser);
+        const combined = [...othersFromDisk, ...myInMemory];
+
+        for (const c of combined) {
+          const localStatus = myStatusUpdates[c.id];
+          if (localStatus && (!c.statusUpdatedAt || localStatus.updatedAt >= c.statusUpdatedAt)) {
+            c.resolved = Boolean(localStatus.resolved);
+            c.statusUpdatedAt = localStatus.updatedAt;
+            c.resolvedBy = localStatus.updatedBy;
+          }
+          const otherReplies = (c.replies || []).filter(r => r.author !== currentUser);
+          const ownRepliesForComment = myReplies.filter(r => r.parentId === c.id);
+          c.replies = [...otherReplies, ...ownRepliesForComment].sort((a, b) =>
+            (a.createdAt || '').localeCompare(b.createdAt || '')
+          );
+        }
+
+        combined.sort((a, b) => a.page - b.page || a.yPercent - b.yPercent);
+        allComments = combined;
+      } else {
+        allComments = merged;
+        myStatusUpdates = userStatusMap.get(currentUser) || {};
+        myReplies = userRepliesMap.get(currentUser) || [];
+      }
+
+      renderAllPinsAndSidebar();
+      await computeAllPdfSummaryCounts();
+      const timeStr = new Date().toLocaleTimeString();
+      statusText.textContent = `Synkad ${timeStr} — ${currentPdfKey}`;
+    }
+
+    function configureAutoSyncTimer() {
+      if (syncTimerId) {
+        clearInterval(syncTimerId);
+        syncTimerId = null;
+      }
+      const intervalMs = parseInt(syncIntervalSelect.value, 10);
+      if (directoryHandle && intervalMs > 0) {
+        syncDot.classList.add('active');
+        syncTimerId = setInterval(() => {
+          scanDirectoryHandle(false);
+        }, intervalMs);
+      } else {
+        syncDot.classList.remove('active');
+      }
+    }
+
+    syncIntervalSelect.addEventListener('change', configureAutoSyncTimer);
+    syncNowBtn.addEventListener('click', () => scanDirectoryHandle(false));
+
+    /* --- 1B & 1C. STATIC FILE / FOLDER FALLBACK --- */
+    folderInput.addEventListener('change', (e) => {
+      stopLiveSyncMode();
+      handleFileList(e.target.files);
+      e.target.value = '';
+    });
+
+    filesInput.addEventListener('change', (e) => {
+      stopLiveSyncMode();
+      handleFileList(e.target.files);
+      e.target.value = '';
+    });
+
+    function stopLiveSyncMode() {
+      directoryHandle = null;
+      if (syncTimerId) clearInterval(syncTimerId);
+      syncTimerId = null;
+      syncDot.classList.remove('active');
+      syncIntervalSelect.disabled = true;
+      syncNowBtn.disabled = true;
+      autosaveCheckbox.disabled = true;
+      autosaveLabel.classList.add('disabled');
+    }
+
+    function sortPdfKeys(pdfKeys) {
+      pdfKeys.sort((a, b) => {
+        const partsA = splitFolderAndName(a);
+        const partsB = splitFolderAndName(b);
+        if (partsA.folder !== partsB.folder) {
+          return partsA.folder.localeCompare(partsB.folder, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return partsA.fileName.localeCompare(partsB.fileName, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    function populatePdfSelectDOM(pdfKeys) {
+      pdfSelect.innerHTML = '<option value="">-- Loaded PDFs --</option>';
+      const hasSubfolders = pdfKeys.some(k => k.includes('/'));
+
+      if (!hasSubfolders) {
+        for (const key of pdfKeys) {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = key + formatPdfBadgeSuffix(pdfSummaryCountsMap.get(key));
+          pdfSelect.appendChild(opt);
+        }
+      } else {
+        const folderGroups = new Map();
+        for (const key of pdfKeys) {
+          const { folder, fileName } = splitFolderAndName(key);
+          if (!folderGroups.has(folder)) {
+            folderGroups.set(folder, []);
+          }
+          folderGroups.get(folder).push({ key, folder, fileName });
+        }
+
+        for (const [folder, items] of folderGroups.entries()) {
+          const optgroup = document.createElement('optgroup');
+          optgroup.label = folder ? `📁 ${folder}` : '📁 (Rotmapp)';
+
+          for (const item of items) {
+            const opt = document.createElement('option');
+            opt.value = item.key;
+            const baseLabel = item.folder ? `${item.folder} / ${item.fileName}` : item.fileName;
+            opt.textContent = baseLabel + formatPdfBadgeSuffix(pdfSummaryCountsMap.get(item.key));
+            optgroup.appendChild(opt);
+          }
+          pdfSelect.appendChild(optgroup);
+        }
+      }
+
+      pdfSelect.disabled = pdfKeys.length === 0;
+      exportAllPdfsBtn.disabled = pdfKeys.length === 0;
+      toggleVisibilityBtn.disabled = pdfKeys.length === 0;
+    }
+
+    async function rebuildPdfDropdownAndLoadFirst() {
+      const pdfKeys = [];
+      for (const [key, file] of loadedFilesMap.entries()) {
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+          pdfKeys.push(key);
+        }
+      }
+      sortPdfKeys(pdfKeys);
+      loadedPdfKeys = pdfKeys;
+      pdfSummaryCountsMap.clear();
+      populatePdfSelectDOM(pdfKeys);
+
+      if (pdfKeys.length > 0) {
+        pdfSelect.value = pdfKeys[0];
+        await loadPdfFromMemory(pdfKeys[0]);
+        await computeAllPdfSummaryCounts();
+      } else {
+        statusText.textContent = 'No PDF found in selection';
+      }
+    }
+
+    async function handleFileList(fileList) {
+      if (!fileList || fileList.length === 0) return;
+      loadedFilesMap.clear();
+      fileLastModifiedMap.clear();
+
+      for (const file of fileList) {
+        const key = getRelativeFileKey(file);
+        loadedFilesMap.set(key, file);
+        fileLastModifiedMap.set(key, file.lastModified);
+      }
+
+      await rebuildPdfDropdownAndLoadFirst();
+    }
+
+    pdfSelect.addEventListener('change', (e) => {
+      if (e.target.value) loadPdfFromMemory(e.target.value);
+    });
+
+    zoomSelect.addEventListener('change', async (e) => {
+      currentScale = parseFloat(e.target.value);
+      if (pdfDoc) await renderAllPages();
+    });
+
+    async function loadPdfFromMemory(pdfKey) {
+      try {
+        statusText.textContent = `Loading ${pdfKey}...`;
+        const pdfFile = loadedFilesMap.get(pdfKey);
+        if (!pdfFile) return;
+
+        currentPdfKey = pdfKey;
+        currentPdfName = pdfFile.name;
+        activeReplyCommentId = null;
+        const arrayBuffer = await pdfFile.arrayBuffer();
+
+        pdfDoc = await pdfjsLib.getDocument({
+          data: arrayBuffer,
+          disableFontFace: true
+        }).promise;
+
+        zoomSelect.disabled = false;
+        saveBtn.disabled = false;
+        exportExcelBtn.disabled = false;
+        exportAllPdfsBtn.disabled = false;
+        toggleVisibilityBtn.disabled = false;
+        hasUnsavedChanges = false;
+        saveBtn.classList.remove('unsaved');
+        saveBtn.textContent = 'Save My Comments';
+
+        const { merged, userStatusMap, userRepliesMap } = await getMergedCommentsAndStatusForPdfKey(pdfKey);
+        const currentUser = getCleanUsername();
+        allComments = merged;
+        myStatusUpdates = userStatusMap.get(currentUser) || {};
+        myReplies = userRepliesMap.get(currentUser) || [];
+
+        await renderAllPages();
+        updateCurrentPdfSummaryBadge();
+        statusText.textContent = `${pdfKey} (${pdfDoc.numPages} pages)`;
+      } catch (err) {
+        console.error('Failed to render PDF:', err);
+        statusText.textContent = 'Error loading PDF (see console)';
+      }
+    }
+
+    async function getMergedCommentsForPdfKey(pdfKey) {
+      const { merged } = await getMergedCommentsAndStatusForPdfKey(pdfKey);
+      return merged;
+    }
+
+    async function getMergedCommentsAndStatusForPdfKey(pdfKey) {
+      const { folder: targetFolder, fileName: targetPdfName } = splitFolderAndName(pdfKey);
+      const prefix = `${targetPdfName}.`;
+      const suffix = `.comments.json`;
+      const merged = [];
+      const globalStatusMap = new Map();
+      const userStatusMap = new Map();
+      const globalRepliesByParent = new Map();
+      const userRepliesMap = new Map();
+
+      for (const [key, file] of loadedFilesMap.entries()) {
+        const { folder, fileName } = splitFolderAndName(key);
+        if (folder === targetFolder && fileName.startsWith(prefix) && fileName.endsWith(suffix)) {
+          try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const fileAuthor = (data.author || fileName.slice(prefix.length, -suffix.length)).trim().toLowerCase();
+
+            if (data.statusUpdates && typeof data.statusUpdates === 'object') {
+              userStatusMap.set(fileAuthor, { ...data.statusUpdates });
+              for (const [cId, st] of Object.entries(data.statusUpdates)) {
+                if (!st || typeof st !== 'object') continue;
+                const existing = globalStatusMap.get(cId);
+                const stTime = st.updatedAt || '';
+                if (!existing || stTime >= (existing.updatedAt || '')) {
+                  globalStatusMap.set(cId, {
+                    resolved: Boolean(st.resolved),
+                    updatedAt: stTime,
+                    updatedBy: st.updatedBy || fileAuthor
+                  });
+                }
+              }
+            }
+
+            if (Array.isArray(data.replies)) {
+              const normalizedAuthorReplies = [];
+              for (const r of data.replies) {
+                if (!r || !r.parentId || !r.content) continue;
+                const replyObj = {
+                  id: r.id || ('r-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
+                  parentId: r.parentId,
+                  author: fileAuthor,
+                  content: r.content,
+                  createdAt: r.createdAt || '',
+                  color: r.color || getAuthorColor(fileAuthor)
+                };
+                normalizedAuthorReplies.push(replyObj);
+                if (!globalRepliesByParent.has(r.parentId)) {
+                  globalRepliesByParent.set(r.parentId, []);
+                }
+                globalRepliesByParent.get(r.parentId).push(replyObj);
+              }
+              userRepliesMap.set(fileAuthor, normalizedAuthorReplies);
+            }
+
+            if (Array.isArray(data.comments)) {
+              for (const c of data.comments) {
+                merged.push({
+                  ...c,
+                  type: c.type || (Array.isArray(c.points) && c.points.length >= 3 ? 'polygon' : 'pin'),
+                  author: fileAuthor,
+                  color: c.color || getAuthorColor(fileAuthor),
+                  resolved: Boolean(c.resolved),
+                  statusUpdatedAt: c.statusUpdatedAt || c.createdAt || '',
+                  resolvedBy: c.resolvedBy || (c.resolved ? fileAuthor : ''),
+                  replies: []
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(`Error parsing ${key}:`, err);
+          }
+        }
+      }
+
+      for (const c of merged) {
+        const latestSt = globalStatusMap.get(c.id);
+        if (latestSt && (!c.statusUpdatedAt || latestSt.updatedAt >= c.statusUpdatedAt)) {
+          c.resolved = latestSt.resolved;
+          c.statusUpdatedAt = latestSt.updatedAt;
+          c.resolvedBy = latestSt.updatedBy;
+        }
+        const thread = globalRepliesByParent.get(c.id) || [];
+        thread.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+        c.replies = thread;
+      }
+
+      merged.sort((a, b) => a.page - b.page || a.yPercent - b.yPercent);
+      return { merged, userStatusMap, userRepliesMap };
+    }
+
+    function toggleCommentResolved(comment) {
+      const currentUser = getCleanUsername();
+      const now = new Date().toISOString();
+      comment.resolved = !comment.resolved;
+      comment.statusUpdatedAt = now;
+      comment.resolvedBy = currentUser;
+
+      myStatusUpdates[comment.id] = {
+        resolved: comment.resolved,
+        updatedAt: now,
+        updatedBy: currentUser
+      };
+
+      markUnsaved();
+      renderAllPinsAndSidebar();
+    }
+
+    function addReplyToComment(comment, replyText, alsoMarkResolved = false) {
+      const content = replyText.trim();
+      if (!content) return;
+
+      const currentUser = getCleanUsername();
+      const now = new Date().toISOString();
+      const newReply = {
+        id: 'r-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        parentId: comment.id,
+        author: currentUser,
+        content,
+        createdAt: now,
+        color: getAuthorColor(currentUser)
+      };
+
+      myReplies.push(newReply);
+      if (!Array.isArray(comment.replies)) {
+        comment.replies = [];
+      }
+      comment.replies.push(newReply);
+
+      if (alsoMarkResolved && !comment.resolved) {
+        comment.resolved = true;
+        comment.statusUpdatedAt = now;
+        comment.resolvedBy = currentUser;
+        myStatusUpdates[comment.id] = {
+          resolved: true,
+          updatedAt: now,
+          updatedBy: currentUser
+        };
+      }
+
+      activeReplyCommentId = null;
+      markUnsaved();
+      renderAllPinsAndSidebar();
+    }
+
+    function deleteOwnReply(comment, replyId) {
+      myReplies = myReplies.filter(r => r.id !== replyId);
+      if (Array.isArray(comment.replies)) {
+        comment.replies = comment.replies.filter(r => r.id !== replyId);
+      }
+      markUnsaved();
+      renderAllPinsAndSidebar();
+    }
+
+    async function renderAllPages() {
+      pdfViewport.innerHTML = '';
+      closeActivePopover();
+      cancelPolygonDraft();
+      cancelBoxDraft();
+
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: currentScale });
+
+        const container = document.createElement('div');
+        container.className = 'page-container';
+        container.style.width = `${viewport.width}px`;
+        container.style.height = `${viewport.height}px`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'comment-overlay';
+        overlay.dataset.pageNumber = pageNum;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'annotation-svg');
+        svg.setAttribute('viewBox', '0 0 100 100');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        overlay.appendChild(svg);
+
+        overlay.addEventListener('click', (e) => {
+          if (!commentsVisible) return;
+          if (suppressNextOverlayClick) {
+            suppressNextOverlayClick = false;
+            return;
+          }
+          if (e.target !== overlay) return;
+          lockedCommentId = null;
+          updateLockedSelectionUI();
+
+          if (currentTool === 'pin') {
+            openCommentPopover(overlay, pageNum, e);
+          } else if (currentTool === 'polygon') {
+            handlePolygonClick(overlay, svg, pageNum, e);
+          }
+        });
+
+        overlay.addEventListener('mousedown', (e) => {
+          if (!commentsVisible) return;
+          if (e.target !== overlay) return;
+          lockedCommentId = null;
+          updateLockedSelectionUI();
+          if (currentTool !== 'box' || e.button !== 0) return;
+          startBoxDraft(overlay, svg, pageNum, e);
+        });
+
+        overlay.addEventListener('mousemove', (e) => {
+          if (currentTool === 'polygon' && activePolygonDraft && activePolygonDraft.pageNum === pageNum) {
+            updatePolygonDraftCursor(overlay, e);
+          }
+        });
+
+        overlay.addEventListener('dblclick', (e) => {
+          if (currentTool === 'polygon' && activePolygonDraft && activePolygonDraft.pageNum === pageNum) {
+            e.preventDefault();
+            e.stopPropagation();
+            finishPolygonDraft();
+          }
+        });
+
+        container.appendChild(canvas);
+        container.appendChild(overlay);
+        pdfViewport.appendChild(container);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      }
+
+      renderAllPinsAndSidebar();
+    }
+
+    function getRelativeCoords(overlay, event) {
+      const rect = overlay.getBoundingClientRect();
+      const xPx = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+      const yPx = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+      return {
+        xPx,
+        yPx,
+        xPercent: Number((xPx / rect.width).toFixed(4)),
+        yPercent: Number((yPx / rect.height).toFixed(4)),
+        rect
+      };
+    }
+
+    function clamp01(val) {
+      return Number(Math.max(0, Math.min(1, val)).toFixed(4));
+    }
+
+    /* --- BOX TOOL LOGIC --- */
+    function startBoxDraft(overlay, svg, pageNum, downEvent) {
+      closeActivePopover();
+      cancelBoxDraft();
+
+      const { xPx, yPx } = getRelativeCoords(overlay, downEvent);
+      const color = getAuthorColor(getCleanUsername());
+
+      const polyEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      polyEl.setAttribute('class', 'draft-polygon');
+      polyEl.setAttribute('stroke', color);
+      polyEl.setAttribute('fill', color);
+      svg.appendChild(polyEl);
+
+      activeBoxDraft = {
+        pageNum,
+        overlay,
+        svg,
+        polyEl,
+        startXPx: xPx,
+        startYPx: yPx,
+        currentPoints: null,
+        isDragging: true
+      };
+
+      statusText.textContent = 'Dragging box... (Hold Shift for square, Esc to cancel)';
+    }
+
+    function updateBoxDraft(moveEvent) {
+      if (!activeBoxDraft || !activeBoxDraft.isDragging) return;
+      const { overlay, startXPx, startYPx, polyEl } = activeBoxDraft;
+      const { xPx, yPx, rect } = getRelativeCoords(overlay, moveEvent);
+
+      let dx = xPx - startXPx;
+      let dy = yPx - startYPx;
+
+      if (moveEvent.shiftKey) {
+        const side = Math.max(Math.abs(dx), Math.abs(dy));
+        dx = (dx < 0 ? -1 : 1) * side;
+        dy = (dy < 0 ? -1 : 1) * side;
+      }
+
+      const endXPx = Math.max(0, Math.min(startXPx + dx, rect.width));
+      const endYPx = Math.max(0, Math.min(startYPx + dy, rect.height));
+
+      const x1 = Number((Math.min(startXPx, endXPx) / rect.width).toFixed(4));
+      const y1 = Number((Math.min(startYPx, endYPx) / rect.height).toFixed(4));
+      const x2 = Number((Math.max(startXPx, endXPx) / rect.width).toFixed(4));
+      const y2 = Number((Math.max(startYPx, endYPx) / rect.height).toFixed(4));
+
+      const pts = [
+        { xPercent: x1, yPercent: y1 },
+        { xPercent: x2, yPercent: y1 },
+        { xPercent: x2, yPercent: y2 },
+        { xPercent: x1, yPercent: y2 }
+      ];
+
+      activeBoxDraft.currentPoints = pts;
+      const pointsAttr = pts.map(p => `${(p.xPercent * 100).toFixed(2)},${(p.yPercent * 100).toFixed(2)}`).join(' ');
+      polyEl.setAttribute('points', pointsAttr);
+    }
+
+    function finishBoxDraft() {
+      if (!activeBoxDraft || !activeBoxDraft.isDragging) return;
+      activeBoxDraft.isDragging = false;
+      suppressNextOverlayClick = true;
+
+      const { overlay, pageNum, currentPoints } = activeBoxDraft;
+      if (!currentPoints) {
+        cancelBoxDraft();
+        return;
+      }
+
+      const widthPct = Math.abs(currentPoints[1].xPercent - currentPoints[0].xPercent);
+      const heightPct = Math.abs(currentPoints[2].yPercent - currentPoints[1].yPercent);
+
+      if (widthPct < 0.008 || heightPct < 0.008) {
+        cancelBoxDraft();
+        return;
+      }
+
+      const centroid = computePolygonCentroid(currentPoints);
+      openAreaCommentPopover(overlay, pageNum, centroid, currentPoints, 'box', 'Add Box', () => {
+        cancelBoxDraft();
+      });
+    }
+
+    function cancelBoxDraft() {
+      if (!activeBoxDraft) return;
+      activeBoxDraft.polyEl.remove();
+      activeBoxDraft = null;
+      if (pdfDoc) {
+        statusText.textContent = `${currentPdfKey} (${pdfDoc.numPages} pages)`;
+      }
+    }
+
+    /* --- EDIT / MOVE / RESIZE EXISTING COMMENTS --- */
+    function startMovePin(comment, overlay, pinEl, downEvent) {
+      if (downEvent.button !== 0 || activePolygonDraft || activeBoxDraft) return;
+      downEvent.stopPropagation();
+      closeActivePopover();
+
+      const { xPercent, yPercent } = getRelativeCoords(overlay, downEvent);
+      activeEditDrag = {
+        mode: 'move-pin',
+        comment,
+        overlay,
+        pinEl,
+        startMouseX: xPercent,
+        startMouseY: yPercent,
+        origX: comment.xPercent,
+        origY: comment.yPercent,
+        hasMoved: false
+      };
+    }
+
+    function startMoveArea(comment, overlay, pinEl, polyEl, handleEls, downEvent) {
+      if (downEvent.button !== 0 || activePolygonDraft || activeBoxDraft) return;
+      downEvent.stopPropagation();
+      closeActivePopover();
+
+      const { xPercent, yPercent } = getRelativeCoords(overlay, downEvent);
+      activeEditDrag = {
+        mode: 'move-area',
+        comment,
+        overlay,
+        pinEl,
+        polyEl,
+        handleEls,
+        startMouseX: xPercent,
+        startMouseY: yPercent,
+        origPoints: comment.points.map(p => ({ ...p })),
+        hasMoved: false
+      };
+    }
+
+    function startResizeVertex(comment, vertexIndex, overlay, pinEl, polyEl, handleEls, downEvent) {
+      if (downEvent.button !== 0 || activePolygonDraft || activeBoxDraft) return;
+      downEvent.stopPropagation();
+      closeActivePopover();
+
+      const origPoints = comment.points.map(p => ({ ...p }));
+      const oppositeIdx = (vertexIndex + 2) % 4;
+      const anchorPoint = origPoints[oppositeIdx];
+
+      activeEditDrag = {
+        mode: comment.type === 'box' ? 'resize-box' : 'move-vertex',
+        comment,
+        vertexIndex,
+        anchorPoint,
+        overlay,
+        pinEl,
+        polyEl,
+        handleEls,
+        origPoints,
+        hasMoved: false
+      };
+    }
+
+    function updateEditDrag(moveEvent) {
+      if (!activeEditDrag) return;
+      const { mode, comment, overlay, pinEl, polyEl, handleEls } = activeEditDrag;
+      const { xPercent, yPercent } = getRelativeCoords(overlay, moveEvent);
+
+      if (mode === 'move-pin') {
+        const dx = xPercent - activeEditDrag.startMouseX;
+        const dy = yPercent - activeEditDrag.startMouseY;
+        if (!activeEditDrag.hasMoved && Math.hypot(dx, dy) < 0.003) return;
+        activeEditDrag.hasMoved = true;
+
+        comment.xPercent = clamp01(activeEditDrag.origX + dx);
+        comment.yPercent = clamp01(activeEditDrag.origY + dy);
+        pinEl.style.left = `${comment.xPercent * 100}%`;
+        pinEl.style.top = `${comment.yPercent * 100}%`;
+      } else if (mode === 'move-area') {
+        let dx = xPercent - activeEditDrag.startMouseX;
+        let dy = yPercent - activeEditDrag.startMouseY;
+        if (!activeEditDrag.hasMoved && Math.hypot(dx, dy) < 0.003) return;
+        activeEditDrag.hasMoved = true;
+
+        const xs = activeEditDrag.origPoints.map(p => p.xPercent);
+        const ys = activeEditDrag.origPoints.map(p => p.yPercent);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+        dx = Math.max(-minX, Math.min(1 - maxX, dx));
+        dy = Math.max(-minY, Math.min(1 - maxY, dy));
+
+        comment.points = activeEditDrag.origPoints.map(p => ({
+          xPercent: Number((p.xPercent + dx).toFixed(4)),
+          yPercent: Number((p.yPercent + dy).toFixed(4))
+        }));
+
+        const centroid = computePolygonCentroid(comment.points);
+        comment.xPercent = centroid.xPercent;
+        comment.yPercent = centroid.yPercent;
+
+        refreshAreaDOM(comment, pinEl, polyEl, handleEls);
+      } else if (mode === 'resize-box') {
+        activeEditDrag.hasMoved = true;
+        const anchor = activeEditDrag.anchorPoint;
+        const x1 = clamp01(Math.min(anchor.xPercent, xPercent));
+        const y1 = clamp01(Math.min(anchor.yPercent, yPercent));
+        const x2 = clamp01(Math.max(anchor.xPercent, xPercent));
+        const y2 = clamp01(Math.max(anchor.yPercent, yPercent));
+
+        if (x2 - x1 >= 0.008 && y2 - y1 >= 0.008) {
+          comment.points = [
+            { xPercent: x1, yPercent: y1 },
+            { xPercent: x2, yPercent: y1 },
+            { xPercent: x2, yPercent: y2 },
+            { xPercent: x1, yPercent: y2 }
+          ];
+          const centroid = computePolygonCentroid(comment.points);
+          comment.xPercent = centroid.xPercent;
+          comment.yPercent = centroid.yPercent;
+          refreshAreaDOM(comment, pinEl, polyEl, handleEls);
+        }
+      } else if (mode === 'move-vertex') {
+        activeEditDrag.hasMoved = true;
+        comment.points[activeEditDrag.vertexIndex] = {
+          xPercent: clamp01(xPercent),
+          yPercent: clamp01(yPercent)
+        };
+        const centroid = computePolygonCentroid(comment.points);
+        comment.xPercent = centroid.xPercent;
+        comment.yPercent = centroid.yPercent;
+        refreshAreaDOM(comment, pinEl, polyEl, handleEls);
+      }
+    }
+
+    function refreshAreaDOM(comment, pinEl, polyEl, handleEls) {
+      if (polyEl) {
+        const ptsAttr = comment.points
+          .map(p => `${(p.xPercent * 100).toFixed(2)},${(p.yPercent * 100).toFixed(2)}`)
+          .join(' ');
+        polyEl.setAttribute('points', ptsAttr);
+      }
+      if (pinEl) {
+        pinEl.style.left = `${comment.xPercent * 100}%`;
+        pinEl.style.top = `${comment.yPercent * 100}%`;
+      }
+      if (handleEls && handleEls.length === comment.points.length) {
+        comment.points.forEach((pt, idx) => {
+          handleEls[idx].style.left = `${pt.xPercent * 100}%`;
+          handleEls[idx].style.top = `${pt.yPercent * 100}%`;
+        });
+      }
+    }
+
+    function finishEditDrag() {
+      if (!activeEditDrag) return;
+      if (activeEditDrag.hasMoved) {
+        suppressNextOverlayClick = true;
+        markUnsaved();
+      }
+      activeEditDrag = null;
+    }
+
+    window.addEventListener('mousemove', (e) => {
+      if (activeBoxDraft && activeBoxDraft.isDragging) {
+        updateBoxDraft(e);
+      } else if (activeEditDrag) {
+        updateEditDrag(e);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (activeBoxDraft && activeBoxDraft.isDragging) {
+        finishBoxDraft();
+      } else if (activeEditDrag) {
+        finishEditDrag();
+      }
+    });
+
+    /* --- POLYGON TOOL LOGIC --- */
+    function handlePolygonClick(overlay, svg, pageNum, clickEvent) {
+      closeActivePopover();
+
+      if (activePolygonDraft && activePolygonDraft.pageNum !== pageNum) {
+        cancelPolygonDraft();
+      }
+
+      const { xPercent, yPercent } = getRelativeCoords(overlay, clickEvent);
+
+      if (activePolygonDraft && activePolygonDraft.points.length > 0) {
+        const lastPt = activePolygonDraft.points[activePolygonDraft.points.length - 1];
+        const dist = Math.hypot(lastPt.xPercent - xPercent, lastPt.yPercent - yPercent);
+        if (dist < 0.005) return;
+      }
+
+      if (!activePolygonDraft) {
+        const color = getAuthorColor(getCleanUsername());
+        const polyEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polyEl.setAttribute('class', 'draft-polygon');
+        polyEl.setAttribute('stroke', color);
+        polyEl.setAttribute('fill', color);
+        svg.appendChild(polyEl);
+
+        activePolygonDraft = {
+          pageNum,
+          overlay,
+          svg,
+          polyEl,
+          color,
+          points: [],
+          cursorPoint: null,
+          vertexEls: []
+        };
+      }
+
+      const ptIndex = activePolygonDraft.points.length;
+      activePolygonDraft.points.push({ xPercent, yPercent });
+
+      const vEl = document.createElement('div');
+      vEl.className = 'draft-vertex' + (ptIndex === 0 ? ' start-vertex' : '');
+      vEl.style.left = `${xPercent * 100}%`;
+      vEl.style.top = `${yPercent * 100}%`;
+      vEl.style.borderColor = activePolygonDraft.color;
+
+      if (ptIndex === 0) {
+        vEl.title = 'Click here to close polygon';
+        vEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (activePolygonDraft && activePolygonDraft.points.length >= 3) {
+            finishPolygonDraft();
+          }
+        });
+      }
+
+      overlay.appendChild(vEl);
+      activePolygonDraft.vertexEls.push(vEl);
+
+      renderDraftPolygonShape();
+      statusText.textContent = `Polygon: ${activePolygonDraft.points.length} point(s) — click start point, double-click, or press Enter to finish (Esc to cancel)`;
+    }
+
+    function updatePolygonDraftCursor(overlay, moveEvent) {
+      if (!activePolygonDraft) return;
+      const { xPercent, yPercent } = getRelativeCoords(overlay, moveEvent);
+      activePolygonDraft.cursorPoint = { xPercent, yPercent };
+      renderDraftPolygonShape();
+    }
+
+    function renderDraftPolygonShape() {
+      if (!activePolygonDraft) return;
+      const pts = [...activePolygonDraft.points];
+      if (activePolygonDraft.cursorPoint) {
+        pts.push(activePolygonDraft.cursorPoint);
+      }
+      const pointsAttr = pts.map(p => `${(p.xPercent * 100).toFixed(2)},${(p.yPercent * 100).toFixed(2)}`).join(' ');
+      activePolygonDraft.polyEl.setAttribute('points', pointsAttr);
+    }
+
+    function cancelPolygonDraft() {
+      if (!activePolygonDraft) return;
+      activePolygonDraft.polyEl.remove();
+      activePolygonDraft.vertexEls.forEach(el => el.remove());
+      activePolygonDraft = null;
+      if (pdfDoc) {
+        statusText.textContent = `${currentPdfKey} (${pdfDoc.numPages} pages)`;
+      }
+    }
+
+    function computePolygonCentroid(points) {
+      const sum = points.reduce((acc, p) => ({
+        x: acc.x + p.xPercent,
+        y: acc.y + p.yPercent
+      }), { x: 0, y: 0 });
+      return {
+        xPercent: Number((sum.x / points.length).toFixed(4)),
+        yPercent: Number((sum.y / points.length).toFixed(4))
+      };
+    }
+
+    function finishPolygonDraft() {
+      if (!activePolygonDraft) return;
+      if (activePolygonDraft.points.length < 3) {
+        alert('A polygon requires at least 3 corner points.');
+        return;
+      }
+
+      const { overlay, pageNum, points } = activePolygonDraft;
+      const savedPoints = points.map(p => ({ xPercent: p.xPercent, yPercent: p.yPercent }));
+      const centroid = computePolygonCentroid(savedPoints);
+
+      activePolygonDraft.cursorPoint = null;
+      renderDraftPolygonShape();
+
+      openAreaCommentPopover(overlay, pageNum, centroid, savedPoints, 'polygon', 'Add Polygon', () => {
+        cancelPolygonDraft();
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (activePolygonDraft) cancelPolygonDraft();
+        if (activeBoxDraft) cancelBoxDraft();
+        if (activePopover) closeActivePopover();
+      } else if (e.key === 'Enter' && activePolygonDraft && !activePopover) {
+        e.preventDefault();
+        finishPolygonDraft();
+      }
+    });
+
+    function closeActivePopover() {
+      if (activePopover) {
+        activePopover.remove();
+        activePopover = null;
+      }
+    }
+
+    function openCommentPopover(overlay, pageNum, clickEvent) {
+      closeActivePopover();
+      const { xPx, yPx, xPercent, yPercent, rect } = getRelativeCoords(overlay, clickEvent);
+      createPopoverDOM(overlay, pageNum, xPx, yPx, rect, 'Add Pin', '', (content) => {
+        const author = getCleanUsername();
+        allComments.push({
+          id: 'c-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          type: 'pin',
+          page: pageNum,
+          xPercent,
+          yPercent,
+          content,
+          createdAt: new Date().toISOString(),
+          author,
+          color: getAuthorColor(author),
+          resolved: false,
+          replies: []
+        });
+      });
+    }
+
+    function openAreaCommentPopover(overlay, pageNum, centroid, points, areaType, buttonText, onCleanup) {
+      closeActivePopover();
+      const rect = overlay.getBoundingClientRect();
+      const xPx = centroid.xPercent * rect.width;
+      const yPx = centroid.yPercent * rect.height;
+
+      createPopoverDOM(
+        overlay,
+        pageNum,
+        xPx,
+        yPx,
+        rect,
+        buttonText,
+        '',
+        (content) => {
+          const author = getCleanUsername();
+          allComments.push({
+            id: 'c-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            type: areaType,
+            page: pageNum,
+            xPercent: centroid.xPercent,
+            yPercent: centroid.yPercent,
+            points,
+            content,
+            createdAt: new Date().toISOString(),
+            author,
+            color: getAuthorColor(author),
+            resolved: false,
+            replies: []
+          });
+          if (onCleanup) onCleanup();
+        },
+        () => {
+          if (onCleanup) onCleanup();
+        }
+      );
+    }
+
+    function openEditCommentPopover(comment) {
+      const currentUser = getCleanUsername();
+      if (comment.author !== currentUser) return;
+
+      const overlay = document.querySelector(`.comment-overlay[data-page-number="${comment.page}"]`);
+      if (!overlay) return;
+
+      closeActivePopover();
+      const rect = overlay.getBoundingClientRect();
+      const xPx = comment.xPercent * rect.width;
+      const yPx = comment.yPercent * rect.height;
+
+      createPopoverDOM(
+        overlay,
+        comment.page,
+        xPx,
+        yPx,
+        rect,
+        'Save Changes',
+        comment.content,
+        (updatedContent) => {
+          comment.content = updatedContent;
+        }
+      );
+    }
+
+    function createPopoverDOM(overlay, pageNum, xPx, yPx, rect, submitLabel, initialValue, onSave, onCancel) {
+      const popover = document.createElement('div');
+      popover.className = 'comment-popover';
+      popover.style.left = `${Math.max(10, Math.min(xPx, rect.width - 250))}px`;
+      popover.style.top = `${Math.max(10, Math.min(yPx, rect.height - 130))}px`;
+
+      const textarea = document.createElement('textarea');
+      textarea.placeholder = `Comment on Page ${pageNum}...`;
+      textarea.value = initialValue || '';
+
+      const actions = document.createElement('div');
+      actions.className = 'popover-actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn secondary';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeActivePopover();
+        if (onCancel) onCancel();
+      });
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn';
+      addBtn.textContent = submitLabel;
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const content = textarea.value.trim();
+        if (!content) return;
+
+        onSave(content);
+        closeActivePopover();
+        markUnsaved();
+        renderAllPinsAndSidebar();
+      });
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(addBtn);
+      popover.appendChild(textarea);
+      popover.appendChild(actions);
+      popover.addEventListener('click', (e) => e.stopPropagation());
+      popover.addEventListener('mousedown', (e) => e.stopPropagation());
+      popover.addEventListener('dblclick', (e) => e.stopPropagation());
+
+      overlay.appendChild(popover);
+      activePopover = popover;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
+    /* --- SAVE & AUTO-SAVE LOGIC --- */
+    function markUnsaved() {
+      hasUnsavedChanges = true;
+      saveBtn.classList.add('unsaved');
+      saveBtn.textContent = 'Save My Comments *';
+      updateCurrentPdfSummaryBadge();
+
+      if (directoryHandle && autosaveCheckbox.checked) {
+        scheduleAutoSave();
+      }
+    }
+
+    function scheduleAutoSave() {
+      if (autoSaveDebounceTimer) {
+        clearTimeout(autoSaveDebounceTimer);
+      }
+      autoSaveDebounceTimer = setTimeout(() => {
+        saveCurrentUserComments({ isAutoSave: true });
+      }, 300);
+    }
+
+    async function getSubdirectoryHandle(rootHandle, folderPath) {
+      if (!folderPath) return rootHandle;
+      const parts = folderPath.split('/').filter(Boolean);
+      let current = rootHandle;
+      for (const part of parts) {
+        current = await current.getDirectoryHandle(part, { create: true });
+      }
+      return current;
+    }
+
+    async function saveCurrentUserComments({ isAutoSave = false } = {}) {
+      if (!currentPdfName) return;
+
+      if (isSavingToDisk) {
+        pendingSaveAfterCurrent = true;
+        return;
+      }
+
+      const currentUser = getCleanUsername();
+      const sidecarName = `${currentPdfName}.${currentUser}.comments.json`;
+
+      const myComments = allComments
+        .filter(c => c.author === currentUser)
+        .map(({ id, type, page, xPercent, yPercent, points, content, createdAt, color, resolved, statusUpdatedAt, resolvedBy }) => {
+          const item = {
+            id,
+            type: type || 'pin',
+            page,
+            xPercent,
+            yPercent,
+            content,
+            createdAt,
+            color,
+            resolved: Boolean(resolved)
+          };
+          if (statusUpdatedAt) item.statusUpdatedAt = statusUpdatedAt;
+          if (resolvedBy) item.resolvedBy = resolvedBy;
+          if ((type === 'polygon' || type === 'box') && Array.isArray(points)) {
+            item.points = points;
+          }
+          return item;
+        });
+
+      const cleanMyReplies = myReplies
+        .filter(r => r.author === currentUser)
+        .map(({ id, parentId, author, content, createdAt, color }) => ({
+          id, parentId, author, content, createdAt, color
+        }));
+
+      const payload = JSON.stringify({
+        pdfFile: currentPdfName,
+        pdfPath: currentPdfKey,
+        author: currentUser,
+        lastUpdated: new Date().toISOString(),
+        comments: myComments,
+        statusUpdates: myStatusUpdates,
+        replies: cleanMyReplies
+      }, null, 2);
+
+      if (directoryHandle) {
+        isSavingToDisk = true;
+        try {
+          const { folder } = splitFolderAndName(currentPdfKey);
+          const targetDirHandle = await getSubdirectoryHandle(directoryHandle, folder);
+          const fileHandle = await targetDirHandle.getFileHandle(sidecarName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(payload);
+          await writable.close();
+
+          const updatedFile = await fileHandle.getFile();
+          const sidecarKey = folder ? `${folder}/${sidecarName}` : sidecarName;
+          loadedFilesMap.set(sidecarKey, updatedFile);
+          fileLastModifiedMap.set(sidecarKey, updatedFile.lastModified);
+
+          hasUnsavedChanges = false;
+          saveBtn.classList.remove('unsaved');
+          saveBtn.textContent = isAutoSave ? 'Auto-saved ✓' : 'Saved to Folder!';
+          const timeStr = new Date().toLocaleTimeString();
+          statusText.textContent = `${isAutoSave ? 'Auto-sparad' : 'Sparad'} ${timeStr} (${sidecarKey})`;
+
+          setTimeout(() => {
+            if (!hasUnsavedChanges) saveBtn.textContent = 'Save My Comments';
+          }, 1800);
+          return;
+        } catch (err) {
+          console.error('Direct folder write failed:', err);
+          if (isAutoSave) {
+            statusText.textContent = 'Auto-save misslyckades (klicka Save My Comments)';
+            return;
+          }
+        } finally {
+          isSavingToDisk = false;
+          if (pendingSaveAfterCurrent) {
+            pendingSaveAfterCurrent = false;
+            saveCurrentUserComments({ isAutoSave: true });
+          }
+        }
+      }
+
+      if (!isAutoSave) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = sidecarName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        hasUnsavedChanges = false;
+        saveBtn.classList.remove('unsaved');
+        saveBtn.textContent = 'Downloaded!';
+        setTimeout(() => {
+          if (!hasUnsavedChanges) saveBtn.textContent = 'Save My Comments';
+        }, 2000);
+      }
+    }
+
+    saveBtn.addEventListener('click', () => {
+      saveCurrentUserComments({ isAutoSave: false });
+    });
+
+    function formatRepliesForCsv(replies) {
+      if (!Array.isArray(replies) || replies.length === 0) return '';
+      return replies.map(r => `${r.author}: ${r.content}`).join(' | ');
+    }
+
+    function downloadCsvFile(headers, rows, filename) {
+      const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+      const csvBody = [
+        'sep=,',
+        headers.map(escapeCsv).join(','),
+        ...rows.map(row => row.map(escapeCsv).join(','))
+      ].join('\r\n');
+
+      const blob = new Blob(['\uFEFF' + csvBody], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    exportExcelBtn.addEventListener('click', () => {
+      if (!currentPdfName || allComments.length === 0) {
+        alert('No comments to export for this PDF.');
+        return;
+      }
+
+      const { folder, fileName } = splitFolderAndName(currentPdfKey);
+      const headers = ['Pin #', 'Status', 'Resolved By', 'Type', 'Folder', 'PDF Document', 'Full Path', 'Page', 'Author', 'Comment', 'Replies / Thread', 'Created At', 'X (%)', 'Y (%)', 'Area Points'];
+      const rows = allComments.map((c, index) => {
+        const typeLabel = c.type === 'box' ? 'Box' : (c.type === 'polygon' ? 'Polygon' : 'Pin');
+        return [
+          index + 1,
+          c.resolved ? 'Resolved' : 'Open',
+          c.resolved ? (c.resolvedBy || '') : '',
+          typeLabel,
+          folder || '(Root)',
+          fileName,
+          currentPdfKey,
+          c.page,
+          c.author,
+          c.content,
+          formatRepliesForCsv(c.replies),
+          c.createdAt ? new Date(c.createdAt).toLocaleString() : '',
+          (c.xPercent * 100).toFixed(1) + '%',
+          (c.yPercent * 100).toFixed(1) + '%',
+          Array.isArray(c.points)
+            ? c.points.map(p => `(${(p.xPercent * 100).toFixed(1)}%, ${(p.yPercent * 100).toFixed(1)}%)`).join(' ')
+            : ''
+        ];
+      });
+
+      downloadCsvFile(headers, rows, `${currentPdfName}.comments.csv`);
+    });
+
+    exportAllPdfsBtn.addEventListener('click', async () => {
+      if (loadedPdfKeys.length === 0) return;
+
+      const prevStatus = statusText.textContent;
+      statusText.textContent = 'Exporting all PDF comments...';
+
+      const headers = ['Global #', 'Pin # (in PDF)', 'Status', 'Resolved By', 'Type', 'Folder', 'PDF Document', 'Full Path', 'Page', 'Author', 'Comment', 'Replies / Thread', 'Created At', 'X (%)', 'Y (%)', 'Area Points'];
+      const rows = [];
+      let globalIndex = 1;
+
+      for (const pdfKey of loadedPdfKeys) {
+        const pdfComments = (pdfKey === currentPdfKey)
+          ? allComments
+          : await getMergedCommentsForPdfKey(pdfKey);
+
+        const { folder, fileName } = splitFolderAndName(pdfKey);
+
+        pdfComments.forEach((c, localIdx) => {
+          const typeLabel = c.type === 'box' ? 'Box' : (c.type === 'polygon' ? 'Polygon' : 'Pin');
+          rows.push([
+            globalIndex++,
+            localIdx + 1,
+            c.resolved ? 'Resolved' : 'Open',
+            c.resolved ? (c.resolvedBy || '') : '',
+            typeLabel,
+            folder || '(Root)',
+            fileName,
+            pdfKey,
+            c.page,
+            c.author,
+            c.content,
+            formatRepliesForCsv(c.replies),
+            c.createdAt ? new Date(c.createdAt).toLocaleString() : '',
+            (c.xPercent * 100).toFixed(1) + '%',
+            (c.yPercent * 100).toFixed(1) + '%',
+            Array.isArray(c.points)
+              ? c.points.map(p => `(${(p.xPercent * 100).toFixed(1)}%, ${(p.yPercent * 100).toFixed(1)}%)`).join(' ')
+              : ''
+          ]);
+        });
+      }
+
+      statusText.textContent = prevStatus;
+
+      if (rows.length === 0) {
+        alert('No comments found across any of the loaded PDFs.');
+        return;
+      }
+
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(headers, rows, `all-folder-comments-${dateStamp}.csv`);
+    });
+
+    let commentUIElements = new Map();
+
+    function updateAuthorFilterOptions() {
+      const authors = Array.from(new Set(allComments.map(c => c.author))).sort();
+      const prevValue = filterAuthorSelect.value;
+      filterAuthorSelect.innerHTML = '<option value="all">👤 Alla användare</option>';
+      for (const author of authors) {
+        const opt = document.createElement('option');
+        opt.value = author;
+        opt.textContent = `👤 ${author}`;
+        filterAuthorSelect.appendChild(opt);
+      }
+      if (authors.includes(prevValue)) {
+        filterAuthorSelect.value = prevValue;
+        filterAuthor = prevValue;
+      } else {
+        filterAuthorSelect.value = 'all';
+        filterAuthor = 'all';
+      }
+    }
+
+    function matchesActiveFilters(comment, index) {
+      if (filterAuthor !== 'all' && comment.author !== filterAuthor) return false;
+      if (filterStatus === 'open' && comment.resolved) return false;
+      if (filterStatus === 'resolved' && !comment.resolved) return false;
+
+      if (searchQuery) {
+        const inContent = (comment.content || '').toLowerCase().includes(searchQuery);
+        const inAuthor = (comment.author || '').toLowerCase().includes(searchQuery);
+        const inPage = `page ${comment.page}`.includes(searchQuery) || `sida ${comment.page}`.includes(searchQuery);
+        const inPinNum = `#${index + 1}` === searchQuery;
+        const inReplies = Array.isArray(comment.replies) && comment.replies.some(r =>
+          (r.content || '').toLowerCase().includes(searchQuery) ||
+          (r.author || '').toLowerCase().includes(searchQuery)
+        );
+        if (!inContent && !inAuthor && !inPage && !inPinNum && !inReplies) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function updateLockedSelectionUI() {
+      for (const [id, ui] of commentUIElements.entries()) {
+        const isLocked = id === lockedCommentId;
+        ui.pin.classList.toggle('active', isLocked);
+        ui.card.classList.toggle('active', isLocked);
+        if (ui.polyEl) ui.polyEl.classList.toggle('active', isLocked);
+        ui.handleEls.forEach(h => h.classList.toggle('visible', isLocked && commentsVisible));
+      }
+    }
+
+    function renderAllPinsAndSidebar() {
+      document.querySelectorAll('.comment-pin, .comment-polygon, .edit-vertex-handle').forEach(el => el.remove());
+      commentsList.innerHTML = '';
+      commentUIElements.clear();
+
+      updateAuthorFilterOptions();
+      updateCurrentPdfSummaryBadge();
+
+      const currentUser = getCleanUsername();
+      let visibleCount = 0;
+
+      allComments.forEach((comment, index) => {
+        if (!matchesActiveFilters(comment, index)) return;
+        visibleCount++;
+
+        const isOwn = comment.author === currentUser;
+        const isResolved = Boolean(comment.resolved);
+        const overlay = document.querySelector(`.comment-overlay[data-page-number="${comment.page}"]`);
+        const pin = document.createElement('div');
+        let polyEl = null;
+        const handleEls = [];
+
+        const isArea = (comment.type === 'polygon' || comment.type === 'box') &&
+          Array.isArray(comment.points) && comment.points.length >= 3;
+
+        if (overlay && commentsVisible) {
+          if (isArea) {
+            const svg = overlay.querySelector('.annotation-svg');
+            if (svg) {
+              polyEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+              polyEl.setAttribute(
+                'class',
+                'comment-polygon' + (isOwn ? ' own-polygon' : '') + (isResolved ? ' resolved' : '')
+              );
+              polyEl.setAttribute('stroke', comment.color);
+              polyEl.setAttribute('fill', comment.color);
+              const ptsAttr = comment.points
+                .map(p => `${(p.xPercent * 100).toFixed(2)},${(p.yPercent * 100).toFixed(2)}`)
+                .join(' ');
+              polyEl.setAttribute('points', ptsAttr);
+              svg.appendChild(polyEl);
+            }
+
+            if (isOwn) {
+              comment.points.forEach((pt, vIdx) => {
+                const hEl = document.createElement('div');
+                hEl.className = 'edit-vertex-handle';
+                hEl.style.left = `${pt.xPercent * 100}%`;
+                hEl.style.top = `${pt.yPercent * 100}%`;
+                hEl.style.borderColor = comment.color;
+                hEl.title = comment.type === 'box' ? 'Drag corner to resize box' : 'Drag corner to reshape polygon';
+                hEl.addEventListener('mousedown', (e) => {
+                  startResizeVertex(comment, vIdx, overlay, pin, polyEl, handleEls, e);
+                });
+                hEl.addEventListener('click', (e) => e.stopPropagation());
+                overlay.appendChild(hEl);
+                handleEls.push(hEl);
+              });
+            }
+          }
+
+          pin.className = 'comment-pin' +
+            (isArea ? ' polygon-badge' : '') +
+            (isOwn ? ' own-pin' : '') +
+            (isResolved ? ' resolved' : '');
+          pin.style.left = `${comment.xPercent * 100}%`;
+          pin.style.top = `${comment.yPercent * 100}%`;
+          pin.style.backgroundColor = comment.color;
+          pin.title = isOwn
+            ? `${comment.author}: ${comment.content} (Drag to move, double-click to edit)`
+            : `${comment.author}: ${comment.content}`;
+          pin.innerHTML = `<span>${isResolved ? '✓' : (index + 1)}</span>`;
+          overlay.appendChild(pin);
+
+          if (isOwn) {
+            if (isArea) {
+              pin.addEventListener('mousedown', (e) => startMoveArea(comment, overlay, pin, polyEl, handleEls, e));
+              if (polyEl) {
+                polyEl.addEventListener('mousedown', (e) => startMoveArea(comment, overlay, pin, polyEl, handleEls, e));
+                polyEl.addEventListener('dblclick', (e) => {
+                  e.stopPropagation();
+                  openEditCommentPopover(comment);
+                });
+              }
+            } else {
+              pin.addEventListener('mousedown', (e) => startMovePin(comment, overlay, pin, e));
+            }
+
+            pin.addEventListener('dblclick', (e) => {
+              e.stopPropagation();
+              openEditCommentPopover(comment);
+            });
+          }
+        }
+
+        const card = document.createElement('div');
+        card.className = 'comment-card' + (isResolved ? ' resolved' : '');
+        card.style.borderLeftColor = comment.color;
+
+        const meta = document.createElement('div');
+        meta.className = 'comment-meta';
+
+        const authorSpan = document.createElement('span');
+        authorSpan.className = 'comment-author';
+        authorSpan.textContent = `#${index + 1} ${comment.author} • Page ${comment.page}`;
+
+        const badge = document.createElement('span');
+        badge.className = 'comment-type-badge';
+        if (comment.type === 'box') {
+          badge.textContent = '▭ Box';
+        } else if (comment.type === 'polygon') {
+          badge.textContent = '⬠ Area';
+        } else {
+          badge.textContent = '📍 Pin';
+        }
+        authorSpan.appendChild(badge);
+
+        const actionsSpan = document.createElement('span');
+        actionsSpan.className = 'card-actions';
+
+        const replyToggleBtn = document.createElement('button');
+        replyToggleBtn.className = 'reply-toggle-btn';
+        const replyCount = Array.isArray(comment.replies) ? comment.replies.length : 0;
+        replyToggleBtn.textContent = replyCount > 0 ? `💬 Svara (${replyCount})` : '💬 Svara';
+        replyToggleBtn.title = 'Skriv ett svar i tråden';
+        replyToggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          activeReplyCommentId = (activeReplyCommentId === comment.id) ? null : comment.id;
+          renderAllPinsAndSidebar();
+        });
+        actionsSpan.appendChild(replyToggleBtn);
+
+        const resolveBtn = document.createElement('button');
+        resolveBtn.className = 'resolve-btn' + (isResolved ? ' is-resolved' : '');
+        resolveBtn.textContent = isResolved ? '✓ Klar' : '○ Öppen';
+        resolveBtn.title = isResolved ? 'Markera som öppen igen' : 'Markera som hanterad/klar';
+        resolveBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleCommentResolved(comment);
+        });
+        actionsSpan.appendChild(resolveBtn);
+
+        if (isOwn) {
+          const editBtn = document.createElement('button');
+          editBtn.className = 'edit-btn';
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (commentsVisible) {
+              pin.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            openEditCommentPopover(comment);
+          });
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'delete-btn';
+          delBtn.textContent = 'Delete';
+          delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            allComments = allComments.filter(c => c.id !== comment.id);
+            delete myStatusUpdates[comment.id];
+            myReplies = myReplies.filter(r => r.parentId !== comment.id);
+            if (lockedCommentId === comment.id) lockedCommentId = null;
+            markUnsaved();
+            renderAllPinsAndSidebar();
+          });
+
+          actionsSpan.appendChild(editBtn);
+          actionsSpan.appendChild(delBtn);
+        }
+
+        meta.appendChild(authorSpan);
+        meta.appendChild(actionsSpan);
+
+        const body = document.createElement('div');
+        body.className = 'comment-body';
+        body.textContent = comment.content;
+
+        card.appendChild(meta);
+        card.appendChild(body);
+
+        if (isResolved && comment.resolvedBy) {
+          const resInfo = document.createElement('div');
+          resInfo.className = 'resolved-info';
+          resInfo.textContent = `✓ Klarmarkerad av ${comment.resolvedBy}`;
+          card.appendChild(resInfo);
+        }
+
+        if (Array.isArray(comment.replies) && comment.replies.length > 0) {
+          const repliesContainer = document.createElement('div');
+          repliesContainer.className = 'replies-container';
+
+          comment.replies.forEach((reply) => {
+            const rItem = document.createElement('div');
+            rItem.className = 'reply-item';
+            rItem.style.borderLeftColor = reply.color || getAuthorColor(reply.author);
+
+            const rHeader = document.createElement('div');
+            rHeader.className = 'reply-header';
+
+            const rAuthor = document.createElement('span');
+            rAuthor.className = 'reply-author';
+            rAuthor.textContent = reply.author;
+            rHeader.appendChild(rAuthor);
+
+            if (reply.author === currentUser) {
+              const rDelBtn = document.createElement('button');
+              rDelBtn.className = 'delete-btn';
+              rDelBtn.textContent = '×';
+              rDelBtn.title = 'Ta bort mitt svar';
+              rDelBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteOwnReply(comment, reply.id);
+              });
+              rHeader.appendChild(rDelBtn);
+            }
+
+            const rText = document.createElement('div');
+            rText.className = 'reply-text';
+            rText.textContent = reply.content;
+
+            rItem.appendChild(rHeader);
+            rItem.appendChild(rText);
+            repliesContainer.appendChild(rItem);
+          });
+
+          card.appendChild(repliesContainer);
+        }
+
+        if (activeReplyCommentId === comment.id) {
+          const replyForm = document.createElement('div');
+          replyForm.className = 'reply-form';
+          replyForm.addEventListener('click', (e) => e.stopPropagation());
+
+          const rTextarea = document.createElement('textarea');
+          rTextarea.placeholder = 'Skriv ett svar eller hur punkten hanterades...';
+
+          const rActions = document.createElement('div');
+          rActions.className = 'reply-form-actions';
+
+          const rCancelBtn = document.createElement('button');
+          rCancelBtn.type = 'button';
+          rCancelBtn.className = 'btn secondary small-btn';
+          rCancelBtn.textContent = 'Avbryt';
+          rCancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            activeReplyCommentId = null;
+            renderAllPinsAndSidebar();
+          });
+
+          const rSendBtn = document.createElement('button');
+          rSendBtn.type = 'button';
+          rSendBtn.className = 'btn small-btn';
+          rSendBtn.textContent = 'Skicka svar';
+          rSendBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addReplyToComment(comment, rTextarea.value, false);
+          });
+
+          rActions.appendChild(rCancelBtn);
+          rActions.appendChild(rSendBtn);
+
+          if (!isResolved) {
+            const rSendResolveBtn = document.createElement('button');
+            rSendResolveBtn.type = 'button';
+            rSendResolveBtn.className = 'btn resolve-send-btn small-btn';
+            rSendResolveBtn.textContent = '✓ Svara & Klara';
+            rSendResolveBtn.title = 'Skicka svaret och markera kommentaren som Klar';
+            rSendResolveBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              addReplyToComment(comment, rTextarea.value, true);
+            });
+            rActions.appendChild(rSendResolveBtn);
+          }
+
+          replyForm.appendChild(rTextarea);
+          replyForm.appendChild(rActions);
+          card.appendChild(replyForm);
+
+          setTimeout(() => rTextarea.focus(), 0);
+        }
+
+        commentsList.appendChild(card);
+
+        commentUIElements.set(comment.id, { pin, card, polyEl, handleEls });
+
+        const highlight = (active) => {
+          if (!commentsVisible) return;
+          const show = active || lockedCommentId === comment.id;
+          pin.classList.toggle('active', show);
+          card.classList.toggle('active', show);
+          if (polyEl) polyEl.classList.toggle('active', show);
+          handleEls.forEach(h => h.classList.toggle('visible', show));
+        };
+
+        card.addEventListener('mouseenter', () => highlight(true));
+        card.addEventListener('mouseleave', () => highlight(false));
+        card.addEventListener('click', () => {
+          lockedCommentId = comment.id;
+          updateLockedSelectionUI();
+          if (commentsVisible && pin) {
+            pin.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+
+        pin.addEventListener('mouseenter', () => highlight(true));
+        pin.addEventListener('mouseleave', () => highlight(false));
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          lockedCommentId = comment.id;
+          updateLockedSelectionUI();
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+
+        if (polyEl) {
+          polyEl.addEventListener('mouseenter', () => highlight(true));
+          polyEl.addEventListener('mouseleave', () => highlight(false));
+          polyEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            lockedCommentId = comment.id;
+            updateLockedSelectionUI();
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
+        }
+
+        handleEls.forEach(h => {
+          h.addEventListener('mouseenter', () => highlight(true));
+          h.addEventListener('mouseleave', () => highlight(false));
+        });
+      });
+
+      commentCount.textContent = visibleCount === allComments.length
+        ? `${allComments.length}`
+        : `${visibleCount}/${allComments.length}`;
+
+      updateLockedSelectionUI();
+    }
+
+    usernameInput.addEventListener('input', () => {
+      lockedCommentId = null;
+      activeReplyCommentId = null;
+      closeActivePopover();
+      renderAllPinsAndSidebar();
+    });
+  </script>
+</body>
+</html>
