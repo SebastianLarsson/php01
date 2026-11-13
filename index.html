@@ -271,8 +271,8 @@
       opacity: 0.72;
     }
     .kommentar-polygon:hover, .kommentar-polygon.aktiv {
-      fill-opacity: 0.30;
-      stroke-width: 3;
+      fill-opacity: 0.32;
+      stroke-width: 3.5;
       opacity: 1;
     }
     .utkast-polygon {
@@ -342,7 +342,7 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.35);
       border: 2px solid #fff;
       cursor: pointer;
-      transition: transform 0.15s ease, opacity 0.15s ease;
+      transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
       z-index: 10;
     }
     .kommentar-nal.egen-nal {
@@ -357,15 +357,27 @@
       width: 24px;
       height: 24px;
     }
-    .kommentar-nal:hover, .kommentar-nal.aktiv {
-      transform: translate(-50%, -100%) rotate(-45deg) scale(1.25);
+    .kommentar-nal:hover {
+      transform: translate(-50%, -100%) rotate(-45deg) scale(1.22);
       opacity: 1;
       z-index: 15;
     }
-    .kommentar-nal.polygon-bricka:hover, .kommentar-nal.polygon-bricka.aktiv {
-      transform: translate(-50%, -50%) scale(1.25);
+    .kommentar-nal.polygon-bricka:hover {
+      transform: translate(-50%, -50%) scale(1.22);
       opacity: 1;
       z-index: 15;
+    }
+    .kommentar-nal.aktiv {
+      transform: translate(-50%, -100%) rotate(-45deg) scale(1.3);
+      opacity: 1;
+      z-index: 18;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.45), 0 4px 10px rgba(0,0,0,0.45);
+    }
+    .kommentar-nal.polygon-bricka.aktiv {
+      transform: translate(-50%, -50%) scale(1.3);
+      opacity: 1;
+      z-index: 18;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.45), 0 4px 10px rgba(0,0,0,0.45);
     }
     .kommentar-nal span {
       transform: rotate(45deg);
@@ -470,23 +482,50 @@
       gap: 0.75rem;
     }
     .kommentar-kort {
+      position: relative;
       background: #fff;
       border: 1px solid var(--kantlinje);
       border-left: 5px solid #ec4899;
+      border-right: 6px solid transparent;
       border-radius: 6px;
       padding: 0.75rem;
       font-size: 0.875rem;
       box-shadow: 0 1px 2px rgba(0,0,0,0.04);
       cursor: pointer;
-      transition: opacity 0.15s ease, background 0.15s ease;
+      transition: all 0.15s ease;
     }
     .kommentar-kort.hanterad {
       background: #f8fafc;
     }
-    .kommentar-kort:hover, .kommentar-kort.aktiv {
+    .kommentar-kort:hover, .kommentar-kort.hovrad {
       background: #f1f5f9;
-      opacity: 1;
+      border-right-color: #93c5fd;
     }
+    /* Tydlig markering på höger sida när kommentaren är vald/aktiv */
+    .kommentar-kort.aktiv {
+      background: #eff6ff;
+      border-top-color: #60a5fa;
+      border-bottom-color: #60a5fa;
+      border-right: 6px solid var(--accent);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+      transform: translateX(-2px);
+    }
+    .kommentar-kort.aktiv::after {
+      content: "◄ Vald";
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      letter-spacing: 0.02em;
+      pointer-events: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
     .kommentar-metadata {
       display: flex;
       justify-content: space-between;
@@ -544,6 +583,7 @@
       display: flex;
       flex-direction: column;
       gap: 0.1rem;
+      padding-right: 3.2rem; /* Lämnar plats för "◄ Vald"-brickan längst ner till höger */
     }
     .kort-atgarder {
       display: inline-flex;
@@ -1346,7 +1386,7 @@
     let aktuellPdfNyckel = '';
     let aktuellPdfNamn = '';
     let pdfDokument = null;
-    let valtZoomLage = 'fit-width'; // 'fit-width' eller numerisk sträng ('0.5', '1', '1.25' osv.)
+    let valtZoomLage = 'fit-width';
     let sidObservator = null;
     let fonsterStorlekTimer = null;
     let allaKommentarer = [];
@@ -1359,8 +1399,8 @@
     let allaMappKommentarerCache = [];
     let tabellSorteringKolumn = 'globaltNr';
     let tabellSorteringStigande = true;
-    let aktivTabellRedigeraNyckel = null; // `${pdfNyckel}::${kommentarId}`
-    let aktivTabellSvaraNyckel = null;    // `${pdfNyckel}::${kommentarId}`
+    let aktivTabellRedigeraNyckel = null;
+    let aktivTabellSvaraNyckel = null;
 
     // Rit- och redigeringsverktyg
     let aktuelltVerktyg = 'nal';
@@ -2006,7 +2046,6 @@
       if (pdfDokument) await ritaAllaSidor();
     });
 
-    // Om "Anpassa bredd" är valt räknas skalan om automatiskt när fönstret ändrar storlek
     window.addEventListener('resize', () => {
       if (valtZoomLage !== 'fit-width' || !pdfDokument) return;
       if (fonsterStorlekTimer) clearTimeout(fonsterStorlekTimer);
@@ -2018,7 +2057,6 @@
     function beraknaSkalaForSida(sida) {
       if (valtZoomLage === 'fit-width') {
         const basVy = sida.getViewport({ scale: 1 });
-        // Tillgänglig bredd i #pdf-visningsyta fram till kommentarsfältet minus marginal
         const tillgangligBredd = Math.max(300, pdfVisningsyta.clientWidth - 48);
         return tillgangligBredd / basVy.width;
       }
@@ -2288,7 +2326,6 @@
         const sidSkala = beraknaSkalaForSida(sida);
         const visningsomrade = sida.getViewport({ scale: sidSkala });
 
-        // Uppdatera behållarens exakta dimensioner om sidan skiljer sig från platshållaren
         behallare.style.width = `${visningsomrade.width}px`;
         behallare.style.height = `${visningsomrade.height}px`;
 
@@ -4465,13 +4502,15 @@
 
         kommentarGranssnittsElement.set(kommentar.id, { nal, kort, polyElement, handtagElementLista });
 
-        const framhav = (aktiv) => {
+        const framhav = (hovrad) => {
           if (!kommentarerSynliga) return;
-          const visa = aktiv || lastKommentarId === kommentar.id;
-          nal.classList.toggle('aktiv', visa);
-          kort.classList.toggle('aktiv', visa);
-          if (polyElement) polyElement.classList.toggle('aktiv', visa);
-          handtagElementLista.forEach(h => h.classList.toggle('synlig', visa));
+          const arLast = lastKommentarId === kommentar.id;
+          const visaAktivNal = hovrad || arLast;
+          nal.classList.toggle('aktiv', visaAktivNal);
+          kort.classList.toggle('hovrad', hovrad && !arLast);
+          kort.classList.toggle('aktiv', arLast);
+          if (polyElement) polyElement.classList.toggle('aktiv', visaAktivNal);
+          handtagElementLista.forEach(h => h.classList.toggle('synlig', visaAktivNal));
         };
 
         kort.addEventListener('mouseenter', () => framhav(true));
