@@ -1189,6 +1189,71 @@
       font-size: 0.74rem;
       background: #fff;
     }
+	.status-valjare-kort:disabled {
+      cursor: not-allowed;
+      opacity: 0.92;
+    }
+    .roll-bricka {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      background: #334155;
+      color: #e2e8f0;
+      display: none;
+    }
+    .roll-bricka.synlig {
+      display: inline-block;
+    }
+    .roll-bricka.ledare {
+      background: #16a34a;
+      color: #fff;
+    }
+	#admin-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.65);
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      padding: 1.5rem;
+      backdrop-filter: blur(2px);
+    }
+    #admin-modal.oppen {
+      display: flex;
+    }
+    .admin-epost-lista {
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--kantlinje);
+      border-radius: 6px;
+      margin-bottom: 0.85rem;
+      background: #f8fafc;
+    }
+    .admin-epost-rad {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 0.7rem;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .admin-epost-rad:last-child {
+      border-bottom: none;
+    }
+    .admin-lagg-till-rad {
+      display: flex;
+      gap: 0.45rem;
+      margin-bottom: 1.15rem;
+    }
+    .admin-lagg-till-rad input {
+      flex: 1;
+      padding: 0.42rem 0.6rem;
+      border: 1px solid var(--kantlinje);
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -1203,10 +1268,14 @@
 
   <header>
     <div class="verktygsgrupp">
-      <label>
+	<label>
         E-post:
         <input type="email" id="epost-falt" placeholder="namn@foretag.se" required style="width: 210px;" title="Ange din e-postadress (används som granskarnamn och i filnamnet)" />
       </label>
+      <span id="roll-bricka" class="roll-bricka"></span>
+      <button type="button" id="hantera-admin-knapp" class="knapp sekundar" style="display: none; padding: 0.35rem 0.65rem; font-size: 0.78rem;" title="Hantera granskningsledare (admin.txt)">
+        🔑 Behörighet
+      </button>
 
       <button type="button" id="live-mapp-knapp" class="knapp" title="Öppna granskningsmapp med automatisk synkning och direktsparning">
         🔄Öppna granskningsmapp
@@ -1277,8 +1346,7 @@
           <li>Klicka på <strong>🔄 Öppna granskningsmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
 		  <li>Klicka på Pin, Rektangel eller polygon för att peka ut ett ställe för en kommentar och sedan kommentera</li>
           <li>Klicka på <strong>➕ Ny flik</strong> bredvid PDF-listan om du vill öppna nästa valda dokument i en ny flik högst upp (upp till 8 flikar samtidigt, dra-och-släpp för att byta ordning). Dina öppna flikar sparas automatiskt till nästa gång du öppnar samma mapp.</li>
-          <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
-          <li>Behöver en enskild sida vridas? Håll musen över sidan och klicka på <strong>↻ Rotera 90°</strong> uppe till höger på sidan – alla nålar och rutor räknas om automatiskt och rotationen sparas.</li>
+<li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller när du svarar i tråden. Vill ni styra vilka som får ändra status? Klicka på <strong>🔒 Skapa admin.txt</strong> i verktygsfältet (eller lägg en <code>admin.txt</code> i rotmappen med en e-postadress per rad) för att utse <strong>Granskningsledare</strong>. Finns ingen <code>admin.txt</code> kan alla ändra status.</li>          <li>Behöver en enskild sida vridas? Håll musen över sidan och klicka på <strong>↻ Rotera 90°</strong> uppe till höger på sidan – alla nålar och rutor räknas om automatiskt och rotationen sparas.</li>
           <li>Klicka på <strong>📋 Tabellvy</strong> längst upp till höger för att sortera, filtrera, svara, redigera, ändra status och exportera samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
         </ol>
         <div class="status-forklaring-lista">
@@ -1299,8 +1367,7 @@
 		<p>- Ingen data lämnar ditt nätverk: När du kopplar en granskningsmapp läses PDF-dokument och kommentarfiler (.comments.json) direkt från din lokala dator eller filarea in i webbläsarens lokala arbetsminne (RAM).   </p>
 		<p>- Noll uppladdning: Inga PDF-filer, ritningar, kommentarer, filnamn eller e-postadresser skickas någonsin till GitHub Pages eller någon annan extern part där sidan ligger. All sparning sker direkt tillbaka till den lokala granskningsmappen via webbläsarens File System Access API.</p>   
 		<p><strong>Vad utbyts mellan verktyget och den lokala filarean?</strong></p>
-		<p>Läsning: Verktyget skannar endast den mapp (och dess undermappar) som du aktivt väljer i mappväljaren. Endast filer som slutar på .pdf och .comments.json läses in av verktyget.</p>
-		<p>Skrivning (Autosparande): När du skapar eller uppdaterar en kommentar, ett svar eller en status skapar/uppdaterar verktyget enbart din personliga json-sidecar-fil i samma mapp som PDF-dokumentet med namnet <pdf-filnamn>.<din-epost>.comments.json. Original-PDF:en ändras aldrig.  </p> 
+<p>Läsning: Verktyget skannar endast den mapp (och dess undermappar) som du aktivt väljer i mappväljaren. Endast filer som slutar på .pdf och .comments.json (samt eventuell admin.txt i rotmappen) läses in av verktyget.</p>		<p>Skrivning (Autosparande): När du skapar eller uppdaterar en kommentar, ett svar eller en status skapar/uppdaterar verktyget enbart din personliga json-sidecar-fil i samma mapp som PDF-dokumentet med namnet <pdf-filnamn>.<din-epost>.comments.json. Original-PDF:en ändras aldrig.  </p> 
 		<p>- Lokal webbläsarlagring (localStorage): För användarvänlighet sparas din angivna e-postadress, dina valda tabellkolumner samt namnen på dina senast öppna flikar lokalt i din egen webbläsare.</p>
 		<p><strong>Åtkomst och behörigheter</strong></p>
 		<p>- Verktygets behörighet till granskningsmappen är tillfällig och gäller endast under den aktiva webbläsarsessionen. När du stänger webbläsaren återkallas åtkomsten automatiskt, och du måste aktivt godkänna mappåtkomsten på nytt vid nästa tillfälle.</p>
@@ -1353,7 +1420,32 @@
       </div>
     </div>
   </div>
+<!-- MODAL FÖR ATT HANTERA GRANSKNINGSLEDARE (ADMIN.TXT) -->
+  <div id="admin-modal">
+    <div class="info-modal-kort" style="max-width: 500px;">
+      <h3>🔑 Hantera granskningsledare (admin.txt)</h3>
+      <p style="margin-bottom: 0.75rem;">
+        Endast e-postadresser i listan nedan (en per rad i <code>admin.txt</code>) kan ändra status på kommentarer. Övriga skapar kommentarer med statusen <strong>Ny kommentar</strong>.
+      </p>
 
+      <ul id="admin-epost-lista" class="admin-epost-lista"></ul>
+
+      <div class="admin-lagg-till-rad">
+        <input type="email" id="ny-admin-epost-falt" placeholder="Lägg till e-post (t.ex. namn@foretag.se)..." />
+        <button type="button" id="lagg-till-admin-knapp" class="knapp">Lägg till</button>
+      </div>
+
+      <div class="info-modal-knappar" style="justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+        <button type="button" id="radera-admin-fil-knapp" class="knapp sekundar" style="background: #dc2626;" title="Tar bort admin.txt så att alla kan ändra status igen">
+          Ta bort begränsning
+        </button>
+        <div style="display: flex; gap: 0.45rem; margin-left: auto;">
+          <button type="button" id="stang-admin-modal-knapp" class="knapp sekundar">Avbryt</button>
+          <button type="button" id="spara-admin-modal-knapp" class="knapp">Spara admin.txt</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <!-- MODAL FÖR TABELLVY (ALLA KOMMENTARER I ALLA PDF-FILER) -->
   <div id="tabell-vy-modal">
     <div class="tabell-vy-kort">
@@ -1592,6 +1684,8 @@
 
     let mappHandtag = null;
     let synkTimerId = null;
+	let adminFilFinns = false;
+    let granskningsledareSet = new Set();
     let synkarNu = false;
     let synkCykelRaknare = 0;
     let harOsparadeAndringar = false;
@@ -1734,7 +1828,89 @@
       localStorage.setItem('granskning_epost', epost);
       return epost;
     }
+	function kanHanteraStatus() {
+      // Finns inte admin.json fungerar verktyget precis som innan
+      if (!adminFilFinns) return true;
+      const epost = hamtaAktuellEpost();
+      return Boolean(epost) && granskningsledareSet.has(epost);
+    }
 
+    function uppdateraRollBrickaUI() {
+      const bricka = document.getElementById('roll-bricka');
+      const adminKnapp = document.getElementById('hantera-admin-knapp');
+      if (!bricka) return;
+
+      if (!mappHandtag) {
+        bricka.className = 'roll-bricka';
+        bricka.textContent = '';
+        if (adminKnapp) adminKnapp.style.display = 'none';
+        return;
+      }
+
+      if (!adminFilFinns) {
+        bricka.className = 'roll-bricka';
+        bricka.textContent = '';
+        if (adminKnapp) {
+          adminKnapp.style.display = 'inline-flex';
+          adminKnapp.textContent = '🔒 Skapa admin.txt';
+          adminKnapp.title = 'Begränsa vilka som får ändra status genom att skapa admin.txt';
+        }
+        return;
+      }
+
+      if (kanHanteraStatus()) {
+        bricka.className = 'roll-bricka synlig ledare';
+        bricka.textContent = '★ Granskningsledare';
+        bricka.title = 'Du finns med i admin.txt och kan ändra status på kommentarer';
+        if (adminKnapp) {
+          adminKnapp.style.display = 'inline-flex';
+          adminKnapp.textContent = '🔑 Granskningsledare';
+          adminKnapp.title = 'Lägg till eller ta bort granskningsledare i admin.txt';
+        }
+      } else {
+        bricka.className = 'roll-bricka synlig';
+        bricka.textContent = 'Granskare';
+        bricka.title = 'Endast granskningsledare i admin.txt kan ändra status på kommentarer';
+        if (adminKnapp) {
+          adminKnapp.style.display = 'none';
+        }
+      }
+    }
+
+    async function lasInAdminKonfig(utFilerKarta) {
+      const adminFil = utFilerKarta.get('admin.txt');
+      if (!adminFil) {
+        const varAktiv = adminFilFinns;
+        adminFilFinns = false;
+        granskningsledareSet.clear();
+        uppdateraRollBrickaUI();
+        return varAktiv;
+      }
+      try {
+        const text = await adminFil.text();
+        const nySet = new Set();
+        const rader = text.split(/\r?\n/);
+        for (const rad of rader) {
+          const epost = rad.trim().toLowerCase();
+          if (epost && !epost.startsWith('#')) {
+            nySet.add(epost);
+          }
+        }
+        const andrad = !adminFilFinns ||
+          nySet.size !== granskningsledareSet.size ||
+          [...nySet].some(e => !granskningsledareSet.has(e));
+        adminFilFinns = true;
+        granskningsledareSet = nySet;
+        uppdateraRollBrickaUI();
+        return andrad;
+      } catch (fel) {
+        console.warn('Kunde inte läsa admin.txt, återgår till öppet läge:', fel);
+        adminFilFinns = false;
+        granskningsledareSet.clear();
+        uppdateraRollBrickaUI();
+        return true;
+      }
+    }
     uppdateraEpostFaltUtseende();
 
     /* --- SPARA OCH ÅTERSTÄLL ÖPPNA FLIKAR I LOCALSTORAGE PER GRANSKNINGSMAPP --- */
@@ -2410,9 +2586,13 @@
       mappHandtagCache.set(prefix, katalogHandtag);
       for await (const post of katalogHandtag.values()) {
         const relativSokvag = prefix ? `${prefix}/${post.name}` : post.name;
-        if (post.kind === 'file') {
+		if (post.kind === 'file') {
           const gemener = post.name.toLowerCase();
-          if (gemener.endsWith('.comments.json')) {
+          if (prefix === '' && gemener === 'admin.txt') {
+            const fil = await post.getFile();
+            utFilerKarta.set('admin.txt', fil);
+            utAndradKarta.set('admin.txt', fil.lastModified);
+          } else if (gemener.endsWith('.comments.json')) {
             const fil = await post.getFile();
             utFilerKarta.set(relativSokvag, fil);
             utAndradKarta.set(relativSokvag, fil.lastModified);
@@ -2509,10 +2689,11 @@
       synkarNu = true;
 
       try {
-        const lasPdfMetadata = arForstaInlasning || tvingaFullSkann;
+		const lasPdfMetadata = arForstaInlasning || tvingaFullSkann;
         const { utFilerKarta, utAndradKarta } = await lasMappRekursivt(mappHandtag, '', new Map(), new Map(), lasPdfMetadata);
+        const adminAndrad = await lasInAdminKonfig(utFilerKarta);
 
-        let harFilAndringar = false;
+        let harFilAndringar = adminAndrad;
         const andradeJsonNycklar = new Set();
 
         if (utAndradKarta.size !== filSenastAndradKarta.size) {
@@ -3059,11 +3240,13 @@
     function andraKommentarStatus(kommentar, nyStatusKod) {
       if (!GRANSKNINGS_STATUSAR[nyStatusKod]) return;
       const aktuellAnvandare = kontrolleraEpostEllerVarna();
-      if (!aktuellAnvandare) {
+      if (!aktuellAnvandare || !kanHanteraStatus()) {
+        if (aktuellAnvandare && !kanHanteraStatus()) {
+          alert('Endast granskningsledare (angivna i admin.json) kan ändra status på kommentarer.');
+        }
         ritaAllaMarkeringarOchSidopanel();
         return;
       }
-
       const nu = new Date().toISOString();
       kommentar.status = nyStatusKod;
       kommentar.statusUppdateradVid = nu;
@@ -3102,7 +3285,7 @@
       }
       kommentar.svar.push(nyttSvar);
 
-      if (nyStatusVidSvar && GRANSKNINGS_STATUSAR[nyStatusVidSvar] && nyStatusVidSvar !== kommentar.status) {
+      if (kanHanteraStatus() && nyStatusVidSvar && GRANSKNINGS_STATUSAR[nyStatusVidSvar] && nyStatusVidSvar !== kommentar.status) {
         kommentar.status = nyStatusVidSvar;
         kommentar.statusUppdateradVid = nu;
         kommentar.statusUppdateradAv = aktuellAnvandare;
@@ -4430,7 +4613,7 @@
             farg: hamtaForfattarFarg(anvandare)
           });
 
-          if (valdNyStatus && GRANSKNINGS_STATUSAR[valdNyStatus]) {
+         if (kanHanteraStatus() && valdNyStatus && GRANSKNINGS_STATUSAR[valdNyStatus]) {
             data.statusUppdateringar[post.kommentar.id] = {
               status: valdNyStatus,
               uppdateradVid: nu,
@@ -4598,6 +4781,10 @@
         statusSelect.className = 'status-valjare-kort';
         statusSelect.style.backgroundColor = stInfo.farg;
         statusSelect.title = `${stInfo.kod}: ${stInfo.beskrivning}`;
+		if (!kanHanteraStatus()) {
+          statusSelect.disabled = true;
+          statusSelect.title = `${stInfo.kod} (Endast granskningsledare kan ändra status)`;
+        }
         for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
           const opt = document.createElement('option');
           opt.value = stObj.kod;
@@ -4812,8 +4999,10 @@
 
           knappRad.appendChild(avbrytKnapp);
           knappRad.appendChild(skickaKnapp);
-          svarBox.appendChild(svarTextruta);
-          svarBox.appendChild(statusValjareSvar);
+		  svarBox.appendChild(svarTextruta);
+          if (kanHanteraStatus()) {
+            svarBox.appendChild(statusValjareSvar);
+          }
           svarBox.appendChild(knappRad);
           tdSvar.appendChild(svarBox);
           setTimeout(() => svarTextruta.focus(), 0);
@@ -5179,7 +5368,12 @@
         statusValjare.className = 'status-valjare-kort';
         statusValjare.style.backgroundColor = statusFarg;
         statusValjare.title = `${statusInfo.kod}: ${statusInfo.beskrivning}`;
-
+		
+		if (!kanHanteraStatus()) {
+          statusValjare.disabled = true;
+          statusValjare.title = `${statusInfo.kod} (Endast granskningsledare kan ändra status)`;
+        }
+		
         for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
           const opt = document.createElement('option');
           opt.value = stObj.kod;
@@ -5317,8 +5511,11 @@
           svarKnappar.appendChild(avbrytSvarKnapp);
           svarKnappar.appendChild(skickaSvarKnapp);
 
-          svarFormular.appendChild(svarTextruta);
-          svarFormular.appendChild(svarStatusRad);
+		 svarFormular.appendChild(svarTextruta);
+          if (kanHanteraStatus()) {
+            svarFormular.appendChild(svarStatusRad);
+          }
+          svarFormular.appendChild(svarKnappar);
           svarFormular.appendChild(svarKnappar);
           kort.appendChild(svarFormular);
 
@@ -5385,9 +5582,173 @@
 
       uppdateraLastMarkeringUI();
     }
+	/* --- HANTERA GRANSKNINGSLEDARE (ADMIN.TXT MODAL) --- */
+    const hanteraAdminKnapp = document.getElementById('hantera-admin-knapp');
+    const adminModal = document.getElementById('admin-modal');
+    const adminEpostLista = document.getElementById('admin-epost-lista');
+    const nyAdminEpostFalt = document.getElementById('ny-admin-epost-falt');
+    const laggTillAdminKnapp = document.getElementById('lagg-till-admin-knapp');
+    const raderaAdminFilKnapp = document.getElementById('radera-admin-fil-knapp');
+    const stangAdminModalKnapp = document.getElementById('stang-admin-modal-knapp');
+    const sparaAdminModalKnapp = document.getElementById('spara-admin-modal-knapp');
 
-    epostFalt.addEventListener('input', async () => {
+    let utkastGranskningsledare = [];
+
+    function oppnaAdminModal() {
+      const aktuellEpost = kontrolleraEpostEllerVarna();
+      if (!aktuellEpost || !mappHandtag) return;
+
+      if (adminFilFinns && !kanHanteraStatus()) {
+        alert('Endast befintliga granskningsledare kan redigera admin.txt.');
+        return;
+      }
+
+      utkastGranskningsledare = Array.from(granskningsledareSet);
+      // Föreslå inloggad användare automatiskt när filen skapas första gången
+      if (!adminFilFinns && utkastGranskningsledare.length === 0) {
+        utkastGranskningsledare.push(aktuellEpost);
+      }
+
+      raderaAdminFilKnapp.style.display = adminFilFinns ? 'inline-flex' : 'none';
+      nyAdminEpostFalt.value = '';
+      ritaUtkastAdminLista();
+      adminModal.classList.add('oppen');
+      nyAdminEpostFalt.focus();
+    }
+
+    function stangAdminModal() {
+      adminModal.classList.remove('oppen');
+    }
+
+    function ritaUtkastAdminLista() {
+      adminEpostLista.innerHTML = '';
+      if (utkastGranskningsledare.length === 0) {
+        const tomLi = document.createElement('li');
+        tomLi.className = 'admin-epost-rad';
+        tomLi.style.color = 'var(--text-dold)';
+        tomLi.textContent = 'Inga granskningsledare tillagda.';
+        adminEpostLista.appendChild(tomLi);
+        return;
+      }
+
+      utkastGranskningsledare.forEach((epost, idx) => {
+        const li = document.createElement('li');
+        li.className = 'admin-epost-rad';
+
+        const span = document.createElement('span');
+        span.style.fontWeight = '600';
+        span.textContent = epost;
+
+        const taBortKnapp = document.createElement('button');
+        taBortKnapp.type = 'button';
+        taBortKnapp.className = 'radera-knapp';
+        taBortKnapp.textContent = 'Ta bort';
+        taBortKnapp.addEventListener('click', () => {
+          utkastGranskningsledare.splice(idx, 1);
+          ritaUtkastAdminLista();
+        });
+
+        li.appendChild(span);
+        li.appendChild(taBortKnapp);
+        adminEpostLista.appendChild(li);
+      });
+    }
+
+    function laggTillEpostIUtkast() {
+      const nyEpost = nyAdminEpostFalt.value.trim().toLowerCase();
+      if (!arGiltigEpost(nyEpost)) {
+        alert('Ange en giltig e-postadress (t.ex. namn@foretag.se).');
+        nyAdminEpostFalt.focus();
+        return;
+      }
+      if (!utkastGranskningsledare.includes(nyEpost)) {
+        utkastGranskningsledare.push(nyEpost);
+      }
+      nyAdminEpostFalt.value = '';
+      ritaUtkastAdminLista();
+      nyAdminEpostFalt.focus();
+    }
+
+    laggTillAdminKnapp.addEventListener('click', laggTillEpostIUtkast);
+    nyAdminEpostFalt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        laggTillEpostIUtkast();
+      }
+    });
+
+    hanteraAdminKnapp.addEventListener('click', oppnaAdminModal);
+    stangAdminModalKnapp.addEventListener('click', stangAdminModal);
+    adminModal.addEventListener('click', (e) => {
+      if (e.target === adminModal) stangAdminModal();
+    });
+
+    sparaAdminModalKnapp.addEventListener('click', async () => {
+      if (!mappHandtag) return;
+
+      if (utkastGranskningsledare.length === 0) {
+        alert('Lägg till minst en e-postadress, eller klicka på "Ta bort begränsning" för att radera admin.txt.');
+        return;
+      }
+
+      const aktuellEpost = hamtaAktuellEpost();
+      if (!utkastGranskningsledare.includes(aktuellEpost)) {
+        const bekräfta = confirm(
+          `Din egen e-postadress (${aktuellEpost}) finns inte med i listan. ` +
+          `Om du sparar kommer du själv inte längre vara granskningsledare. Vill du fortsätta?`
+        );
+        if (!bekräfta) return;
+      }
+
+      try {
+        const textInnehall = utkastGranskningsledare.join('\r\n') + '\r\n';
+        const filHandtag = await mappHandtag.getFileHandle('admin.txt', { create: true });
+        const skrivbar = await filHandtag.createWritable();
+        await skrivbar.write(textInnehall);
+        await skrivbar.close();
+
+        const fil = await filHandtag.getFile();
+        inlastaFilerKarta.set('admin.txt', fil);
+        filSenastAndradKarta.set('admin.txt', fil.lastModified);
+
+        await lasInAdminKonfig(inlastaFilerKarta);
+        ritaAllaMarkeringarOchSidopanel();
+        if (tabellVyModal.classList.contains('oppen')) {
+          ritaTabellVyRader();
+        }
+        uppdateraSynkTidVisning('Sparad');
+        stangAdminModal();
+      } catch (fel) {
+        console.error('Kunde inte spara admin.txt:', fel);
+        alert('Kunde inte spara admin.txt: ' + fel.message);
+      }
+    });
+
+    raderaAdminFilKnapp.addEventListener('click', async () => {
+      if (!mappHandtag) return;
+      if (!confirm('Vill du ta bort admin.txt från mappen? Då kan samtliga granskare ändra status på kommentarer igen.')) {
+        return;
+      }
+      try {
+        await mappHandtag.removeEntry('admin.txt');
+        inlastaFilerKarta.delete('admin.txt');
+        filSenastAndradKarta.delete('admin.txt');
+
+        await lasInAdminKonfig(inlastaFilerKarta);
+        ritaAllaMarkeringarOchSidopanel();
+        if (tabellVyModal.classList.contains('oppen')) {
+          ritaTabellVyRader();
+        }
+        uppdateraSynkTidVisning('Sparad');
+        stangAdminModal();
+      } catch (fel) {
+        console.error('Kunde inte ta bort admin.txt:', fel);
+        alert('Kunde inte ta bort admin.txt: ' + fel.message);
+      }
+    });
+	epostFalt.addEventListener('input', async () => {
       uppdateraEpostFaltUtseende();
+      uppdateraRollBrickaUI();
       lastKommentarId = null;
       aktivtSvarKommentarId = null;
       aktivTabellRedigeraNyckel = null;
