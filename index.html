@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF-granskningsverktyg</title>
+  <title>Verktyg för gemensam PDF-granskning, helt lokalt</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
@@ -1209,7 +1209,7 @@
       </label>
 
       <button type="button" id="live-mapp-knapp" class="knapp" title="Öppna granskningsmapp med automatisk synkning och direktsparning">
-        🔄 Öppna granskningsmapp
+        🔄Öppna granskningsmapp
       </button>
 
       <div class="pdf-valjare-grupp">
@@ -1217,7 +1217,7 @@
           <option value="">-- Inlästa PDF-filer --</option>
         </select>
         <button type="button" id="oppna-ny-flik-lage-knapp" class="knapp sekundar" disabled title="Aktivera för att öppna nästa valda PDF i rullgardinsmenyn som en ny flik (max 8 flikar)">
-          ➕ Ny flik
+          ➕Ny flik
         </button>
       </div>
 
@@ -1245,7 +1245,7 @@
       </div>
 
       <button id="vaxla-synlighet-knapp" class="knapp sekundar" disabled title="Visa eller dölj alla markeringar på sidan">
-        👁️ Dölj kommentarer
+        Dölj kommentarer
       </button>
       <label>
         Zoom:
@@ -1262,7 +1262,7 @@
         </select>
       </label>
       <button id="tabell-vy-knapp" class="knapp aktiv-vy" disabled title="Visa en tabell med alla kommentarer från samtliga PDF-filer i mappen">
-        📋 Tabellvy
+        Tabellvy
       </button>
     </div>
   </header>
@@ -1270,10 +1270,12 @@
   <main>
     <div id="pdf-visningsyta">
       <div class="tomt-lage">
-        <h3>PDF-granskningsverktyg</h3>
+        <h3>PDF-granskningsverktyg v0.5</h3>
         <ol>
+		  <li>Lägg PDFer som ska granskar i en filarea i en <strong>mapp</strong> (som kan han undermappar). Användarna väljer mappen och verktygen läser in alla PDFer och användaren kan börja granska</li>
           <li>Skriv in din <strong>E-post</strong> i rutan längst upp till vänster (obligatoriskt). Din kommentarfil döps automatiskt efter hela din e-postadress.</li>
           <li>Klicka på <strong>🔄 Öppna granskningsmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
+		  <li>Klicka på Pin, Rektangel eller polygon för att peka ut ett ställe för en kommentar och sedan kommentera</li>
           <li>Klicka på <strong>➕ Ny flik</strong> bredvid PDF-listan om du vill öppna nästa valda dokument i en ny flik högst upp (upp till 8 flikar samtidigt, dra-och-släpp för att byta ordning). Dina öppna flikar sparas automatiskt till nästa gång du öppnar samma mapp.</li>
           <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
           <li>Behöver en enskild sida vridas? Håll musen över sidan och klicka på <strong>↻ Rotera 90°</strong> uppe till höger på sidan – alla nålar och rutor räknas om automatiskt och rotationen sparas.</li>
@@ -1288,9 +1290,25 @@
           <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#ea580c;"></span><strong>Ny granskning:</strong> Kommentaren är så omfattande att en ny granskning krävs (Orange)</div>
           <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#2563eb;"></span><strong>Annat forum eller skede:</strong> Ska ej åtgärdas i denna granskning utan hanteras vidare i annat forum eller skede (Blå)</div>
         </div>
+		<div class="status-forklaring-lista">
+        <h3>Säkerhetsdokumentation för lokalt PDF-granskningsverktyget</h3>
+        <ol>
+
+		<p><strong>Detta granskningsverktyg är en renodlad klientapplikation, en statisk html-fil</strong>.</p> 
+		<p>Webbservern där index.html, sidan du läser, används uteslutande för att leverera själva programkoden (HTML/JavaScript) till din webbläsare när du öppnar sidan.</p>
+		<p>- Ingen data lämnar ditt nätverk: När du kopplar en granskningsmapp läses PDF-dokument och kommentarfiler (.comments.json) direkt från din lokala dator eller filarea in i webbläsarens lokala arbetsminne (RAM).   </p>
+		<p>- Noll uppladdning: Inga PDF-filer, ritningar, kommentarer, filnamn eller e-postadresser skickas någonsin till GitHub Pages eller någon annan extern part där sidan ligger. All sparning sker direkt tillbaka till den lokala granskningsmappen via webbläsarens File System Access API.</p>   
+		<p><strong>Vad utbyts mellan verktyget och den lokala filarean?</strong></p>
+		<p>Läsning: Verktyget skannar endast den mapp (och dess undermappar) som du aktivt väljer i mappväljaren. Endast filer som slutar på .pdf och .comments.json läses in av verktyget.</p>
+		<p>Skrivning (Autosparande): När du skapar eller uppdaterar en kommentar, ett svar eller en status skapar/uppdaterar verktyget enbart din personliga json-sidecar-fil i samma mapp som PDF-dokumentet med namnet <pdf-filnamn>.<din-epost>.comments.json. Original-PDF:en ändras aldrig.  </p> 
+		<p>- Lokal webbläsarlagring (localStorage): För användarvänlighet sparas din angivna e-postadress, dina valda tabellkolumner samt namnen på dina senast öppna flikar lokalt i din egen webbläsare.</p>
+		<p><strong>Åtkomst och behörigheter</strong></p>
+		<p>- Verktygets behörighet till granskningsmappen är tillfällig och gäller endast under den aktiva webbläsarsessionen. När du stänger webbläsaren återkallas åtkomsten automatiskt, och du måste aktivt godkänna mappåtkomsten på nytt vid nästa tillfälle.</p>
+		<p>- Behörighetsstyrning och läs-/skrivrättigheter till dokumenten hanteras helt av er befintliga behörighetsstruktur på filservern/nätverksmappen.</p>
+        </ol>
       </div>
     </div>
-
+</div>
     <aside>
       <div class="sidopanel-huvud">
         <span>Kommentarer (<span id="kommentar-antal">0</span>)</span>
