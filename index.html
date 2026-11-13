@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF-granskningsverktyg (BEAst 3.0, Sidrotation, Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
+  <title>PDF-granskningsverktyg (Flikar, Sidrotation, Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
       --bg-mork: #1e293b;
+      --bg-flikrad: #0f172a;
       --bg-panel: #f8fafc;
       --kantlinje: #cbd5e1;
       --accent: #2563eb;
@@ -25,6 +26,111 @@
       height: 100vh;
       overflow: hidden;
       background: #e2e8f0;
+    }
+
+    /* --- FLIKRAD OVANFÖR VERKTYGSFÄLTET --- */
+    #flik-rad {
+      background: var(--bg-flikrad);
+      display: none;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0.35rem 0.85rem 0 0.85rem;
+      border-bottom: 1px solid #334155;
+      gap: 0.5rem;
+      z-index: 25;
+      user-select: none;
+    }
+    #flik-rad.synlig {
+      display: flex;
+    }
+    #flik-lista {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.25rem;
+      overflow-x: auto;
+      flex: 1;
+      scrollbar-width: none;
+    }
+    #flik-lista::-webkit-scrollbar {
+      display: none;
+    }
+    .pdf-flik {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      max-width: 195px;
+      min-width: 90px;
+      padding: 0.38rem 0.55rem 0.38rem 0.7rem;
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-bottom: none;
+      border-radius: 6px 6px 0 0;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: grab;
+      transition: background 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .pdf-flik:hover {
+      background: #273549;
+      color: #e2e8f0;
+    }
+    .pdf-flik.aktiv {
+      background: var(--bg-mork);
+      color: #fff;
+      font-weight: 600;
+      border-color: #475569;
+      border-top: 2px solid var(--accent);
+      padding-top: 0.32rem;
+    }
+    .pdf-flik.drar-flik {
+      opacity: 0.45;
+    }
+    .pdf-flik.slapp-mal-vanster {
+      box-shadow: -3px 0 0 0 #38bdf8;
+    }
+    .pdf-flik.slapp-mal-hoger {
+      box-shadow: 3px 0 0 0 #38bdf8;
+    }
+    .flik-titel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      pointer-events: none;
+    }
+    .flik-stang-knapp {
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-size: 0.95rem;
+      line-height: 1;
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0.65;
+      flex-shrink: 0;
+    }
+    .flik-stang-knapp:hover {
+      background: rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+      opacity: 1;
+    }
+    .flik-info-hoger {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-bottom: 0.35rem;
+      font-size: 0.74rem;
+      color: #94a3b8;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     header {
@@ -68,8 +174,14 @@
     header input[type="email"]:focus:not(.ogiltig) {
       border-color: var(--accent);
     }
+    .pdf-valjare-grupp {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
     #pdf-valjare {
-      max-width: 340px;
+      min-width: 340px;
+      max-width: 560px;
     }
     #pdf-valjare optgroup {
       background: #1e293b;
@@ -102,6 +214,11 @@
     .knapp.avstangd { background: #475569; color: #94a3b8; }
     .knapp.aktiv-vy { background: #0d9488; }
     .knapp.aktiv-vy:hover:not(:disabled) { background: #0f766e; }
+    .knapp.ny-flik-lage-aktiv {
+      background: var(--gron);
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.4);
+    }
 
     /* Synk- och autospar-bricka */
     .synk-bricka {
@@ -194,7 +311,7 @@
     .tomt-lage h3 { margin-bottom: 0.75rem; }
     .tomt-lage ol { padding-left: 1.25rem; color: var(--text-dold); font-size: 0.92rem; margin-bottom: 1rem; }
     .tomt-lage li { margin-bottom: 0.5rem; }
-    .beast-lista {
+    .status-forklaring-lista {
       display: grid;
       grid-template-columns: 1fr;
       gap: 0.4rem;
@@ -202,12 +319,12 @@
       border-top: 1px solid var(--kantlinje);
       padding-top: 0.85rem;
     }
-    .beast-rad {
+    .status-forklaring-rad {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    .beast-farg-prick {
+    .status-farg-prick {
       width: 12px;
       height: 12px;
       border-radius: 3px;
@@ -537,7 +654,6 @@
       background: #f1f5f9;
       border-right-color: #93c5fd;
     }
-    /* Tydlig markering på höger sida när kommentaren är vald/aktiv */
     .kommentar-kort.aktiv {
       background: #eff6ff;
       border-top-color: #60a5fa;
@@ -729,7 +845,7 @@
     }
 
     /* --- FULLSKÄRMSVY FÖR TABELL (ALLA KOMMENTARER I ALLA PDF:ER) --- */
-    #tabell-vy-modal {
+    #tabell-vy-modal, #flik-grans-modal {
       position: fixed;
       inset: 0;
       background: rgba(15, 23, 42, 0.65);
@@ -739,9 +855,37 @@
       padding: 1.5rem;
       backdrop-filter: blur(2px);
     }
-    #tabell-vy-modal.oppen {
+    #tabell-vy-modal.oppen, #flik-grans-modal.oppen {
       display: flex;
     }
+    .info-modal-kort {
+      margin: auto;
+      background: #fff;
+      border-radius: 8px;
+      max-width: 440px;
+      width: 100%;
+      padding: 1.5rem;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+      border: 1px solid var(--kantlinje);
+      line-height: 1.5;
+    }
+    .info-modal-kort h3 {
+      margin-bottom: 0.55rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .info-modal-kort p {
+      font-size: 0.9rem;
+      color: var(--text-dold);
+      margin-bottom: 1.15rem;
+    }
+    .info-modal-knappar {
+      display: flex;
+      justify-content: flex-end;
+    }
+
     .tabell-vy-kort {
       background: #fff;
       border-radius: 8px;
@@ -1049,6 +1193,14 @@
 </head>
 <body>
 
+  <!-- FLIKRAD HÖGST UPP (Visas när PDF-filer är öppna) -->
+  <nav id="flik-rad" aria-label="Öppna PDF-flikar">
+    <div id="flik-lista"></div>
+    <div class="flik-info-hoger">
+      <span id="flik-antal-etikett" title="Dra i flikarna för att ändra ordning. Mittenklicka eller tryck × för att stänga.">0 / 8 flikar</span>
+    </div>
+  </nav>
+
   <header>
     <div class="verktygsgrupp">
       <label>
@@ -1060,9 +1212,14 @@
         🔄 Öppna granskningsmapp
       </button>
 
-      <select id="pdf-valjare" disabled>
-        <option value="">-- Inlästa PDF-filer --</option>
-      </select>
+      <div class="pdf-valjare-grupp">
+        <select id="pdf-valjare" disabled title="Välj PDF-dokument (byter i aktiv flik, eller öppnar ny flik om ➕ Ny flik är intryckt)">
+          <option value="">-- Inlästa PDF-filer --</option>
+        </select>
+        <button type="button" id="oppna-ny-flik-lage-knapp" class="knapp sekundar" disabled title="Aktivera för att öppna nästa valda PDF i rullgardinsmenyn som en ny flik (max 8 flikar)">
+          ➕ Ny flik
+        </button>
+      </div>
 
       <div class="verktygs-valjare" title="Välj markeringsverktyg">
         <button type="button" id="verktyg-nal-knapp" class="verktygs-knapp aktiv">📍 Nål</button>
@@ -1104,14 +1261,8 @@
           <option value="3">300%</option>
         </select>
       </label>
-      <button id="exportera-pdf-knapp" class="knapp sekundar" disabled title="Exportera kommentarer för aktuell PDF till Excel (.csv)">
-        Exportera PDF (.csv)
-      </button>
-      <button id="exportera-alla-knapp" class="knapp sekundar" disabled title="Exportera kommentarer från ALLA PDF-filer i mappen till en gemensam Excel-fil (.csv)">
-        Exportera mapp (.csv)
-      </button>
       <button id="tabell-vy-knapp" class="knapp aktiv-vy" disabled title="Visa en tabell med alla kommentarer från samtliga PDF-filer i mappen">
-        📋 Tabellvy (Alla PDF)
+        📋 Tabellvy
       </button>
     </div>
   </header>
@@ -1119,22 +1270,23 @@
   <main>
     <div id="pdf-visningsyta">
       <div class="tomt-lage">
-        <h3>PDF-granskningsverktyg (BEAst Effektivare granskning 3.0)</h3>
+        <h3>PDF-granskningsverktyg</h3>
         <ol>
           <li>Skriv in din <strong>E-post</strong> i rutan längst upp till vänster (obligatoriskt). Din kommentarfil döps automatiskt efter hela din e-postadress.</li>
           <li>Klicka på <strong>🔄 Öppna granskningsmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
+          <li>Klicka på <strong>➕ Ny flik</strong> bredvid PDF-listan om du vill öppna nästa valda dokument i en ny flik högst upp (upp till 8 flikar samtidigt, dra-och-släpp för att byta ordning). Dina öppna flikar sparas automatiskt till nästa gång du öppnar samma mapp.</li>
           <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
           <li>Behöver en enskild sida vridas? Håll musen över sidan och klicka på <strong>↻ Rotera 90°</strong> uppe till höger på sidan – alla nålar och rutor räknas om automatiskt och rotationen sparas.</li>
-          <li>Klicka på <strong>📋 Tabellvy (Alla PDF)</strong> längst upp till höger för att sortera, filtrera, svara, redigera och ändra status bland samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
+          <li>Klicka på <strong>📋 Tabellvy</strong> längst upp till höger för att sortera, filtrera, svara, redigera, ändra status och exportera samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
         </ol>
-        <div class="beast-lista">
-          <strong>Statusar enligt BEAst Effektivare granskning 3.0:</strong>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#ec4899;"></span><strong>Ny kommentar:</strong> Ny kommentar har skapats av granskare (Rosa)</div>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#475569;"></span><strong>Avvisad:</strong> Avvisad av ansvarig projekteringsledare, ska ej åtgärdas (Mörkgrå)</div>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#dc2626;"></span><strong>Ska åtgärdas:</strong> Ska åtgärdas av ansvarig konsult (Röd)</div>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#16a34a;"></span><strong>Har åtgärdats:</strong> Har åtgärdats av ansvarig konsult (Grön)</div>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#ea580c;"></span><strong>Ny granskning:</strong> Kommentaren är så omfattande att en ny granskning krävs (Orange)</div>
-          <div class="beast-rad"><span class="beast-farg-prick" style="background:#2563eb;"></span><strong>Annat forum eller skede:</strong> Ska ej åtgärdas i denna granskning utan hanteras vidare i annat forum eller skede (Blå)</div>
+        <div class="status-forklaring-lista">
+          <strong>Tillgängliga granskningsstatusar:</strong>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#ec4899;"></span><strong>Ny kommentar:</strong> Ny kommentar har skapats av granskare (Rosa)</div>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#475569;"></span><strong>Avvisad:</strong> Avvisad av ansvarig granskningsledare, ska ej åtgärdas (Mörkgrå)</div>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#dc2626;"></span><strong>Ska åtgärdas:</strong> Ska åtgärdas av ansvarig utförare (Röd)</div>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#16a34a;"></span><strong>Har åtgärdats:</strong> Har åtgärdats av ansvarig utförare (Grön)</div>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#ea580c;"></span><strong>Ny granskning:</strong> Kommentaren är så omfattande att en ny granskning krävs (Orange)</div>
+          <div class="status-forklaring-rad"><span class="status-farg-prick" style="background:#2563eb;"></span><strong>Annat forum eller skede:</strong> Ska ej åtgärdas i denna granskning utan hanteras vidare i annat forum eller skede (Blå)</div>
         </div>
       </div>
     </div>
@@ -1152,11 +1304,11 @@
           <select id="filter-forfattare-valjare" title="Filtrera på granskare">
             <option value="alla">👤 Alla granskare</option>
           </select>
-          <select id="filter-status-valjare" title="Filtrera på BEAst-status">
+          <select id="filter-status-valjare" title="Filtrera på status">
             <option value="alla">📋 Alla statusar</option>
             <option value="aktiva">⚡ Alla aktiva (ej hanterade)</option>
             <option value="hanterade">✅ Alla hanterade / avslutade</option>
-            <optgroup label="BEAst 3.0 Statusar">
+            <optgroup label="Granskningsstatusar">
               <option value="Ny kommentar">🩷 Ny kommentar</option>
               <option value="Ska åtgärdas">🔴 Ska åtgärdas</option>
               <option value="Har åtgärdats">🟢 Har åtgärdats</option>
@@ -1171,6 +1323,19 @@
     </aside>
   </main>
 
+  <!-- INFORMATIONSRUTA VID MAX ANTAL FLIKAR (8 ST) -->
+  <div id="flik-grans-modal">
+    <div class="info-modal-kort">
+      <h3>⚠️ Max antal flikar (8 st) uppnått</h3>
+      <p>
+        Du har redan 8 PDF-dokument öppna i flikraden. För att hålla verktyget snabbt och överskådligt behöver du stänga en flik du inte längre läser (klicka på <strong>×</strong> på en flik) innan du kan öppna en ny, eller välja dokumentet direkt i en befintlig flik.
+      </p>
+      <div class="info-modal-knappar">
+        <button type="button" id="stang-flik-grans-knapp" class="knapp">Jag förstår</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL FÖR TABELLVY (ALLA KOMMENTARER I ALLA PDF-FILER) -->
   <div id="tabell-vy-modal">
     <div class="tabell-vy-kort">
@@ -1181,7 +1346,7 @@
         </div>
         <div class="verktygsgrupp">
           <button type="button" id="tabell-exportera-knapp" class="knapp">
-            📥 Exportera mapp (.csv)
+            📥 Exportera (.csv)
           </button>
           <button type="button" id="stang-tabell-vy-knapp" class="knapp sekundar">
             ✕ Stäng tabellvy (Esc)
@@ -1197,11 +1362,11 @@
         <select id="tabell-filter-forfattare" title="Filtrera på granskare">
           <option value="alla">👤 Alla granskare</option>
         </select>
-        <select id="tabell-filter-status" title="Filtrera på BEAst-status">
+        <select id="tabell-filter-status" title="Filtrera på status">
           <option value="alla">📋 Alla statusar</option>
           <option value="aktiva">⚡ Alla aktiva (ej hanterade)</option>
           <option value="hanterade">✅ Alla hanterade / avslutade</option>
-          <optgroup label="BEAst 3.0 Statusar">
+          <optgroup label="Granskningsstatusar">
             <option value="Ny kommentar">🩷 Ny kommentar</option>
             <option value="Ska åtgärdas">🔴 Ska åtgärdas</option>
             <option value="Har åtgärdats">🟢 Har åtgärdats</option>
@@ -1237,9 +1402,9 @@
               <th data-kolumn-id="atgard">Åtgärd</th>
               <th class="sorterbar" data-kolumn-id="globaltNr" data-sort-kolumn="globaltNr">Globalt nr <span class="sorterings-pil">▲</span></th>
               <th class="sorterbar" data-kolumn-id="lokaltNr" data-sort-kolumn="lokaltNr">Nr (i PDF) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="status" data-sort-kolumn="status">BEAst-status <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="status" data-sort-kolumn="status">Status <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="beskrivning" data-sort-kolumn="beskrivning">Statusbeskrivning <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="farg" data-sort-kolumn="farg">Färg (BEAst) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="farg" data-sort-kolumn="farg">Färg <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="andradAv" data-sort-kolumn="andradAv">Status ändrad av <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="typ" data-sort-kolumn="typ">Typ <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="mapp" data-sort-kolumn="mapp">Mapp <span class="sorterings-pil">↕</span></th>
@@ -1266,8 +1431,8 @@
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
-    /* --- BEAst EFFEKTIVARE GRANSKNING 3.0 STATUSDEFINITIONER --- */
-    const BEAST_STATUSAR = {
+    /* --- GRANSKNINGSSTATUSAR --- */
+    const GRANSKNINGS_STATUSAR = {
       'Ny kommentar': {
         kod: 'Ny kommentar',
         beskrivning: 'Ny kommentar har skapats av granskare',
@@ -1277,21 +1442,21 @@
       },
       'Avvisad': {
         kod: 'Avvisad',
-        beskrivning: 'Avvisad av ansvarig projekteringsledare, ska ej åtgärdas',
+        beskrivning: 'Avvisad av ansvarig granskningsledare, ska ej åtgärdas',
         farg: '#475569', // Mörkgrå
         fargNamn: 'Mörkgrå',
         arHanterad: true
       },
       'Ska åtgärdas': {
         kod: 'Ska åtgärdas',
-        beskrivning: 'Ska åtgärdas av ansvarig konsult',
+        beskrivning: 'Ska åtgärdas av ansvarig utförare',
         farg: '#dc2626', // Röd
         fargNamn: 'Röd',
         arHanterad: false
       },
       'Har åtgärdats': {
         kod: 'Har åtgärdats',
-        beskrivning: 'Har åtgärdats av ansvarig konsult',
+        beskrivning: 'Har åtgärdats av ansvarig utförare',
         farg: '#16a34a', // Grön
         fargNamn: 'Grön',
         arHanterad: true
@@ -1313,15 +1478,16 @@
     };
 
     const STANDARD_STATUS = 'Ny kommentar';
+    const MAX_ANTAL_FLIKAR = 8;
 
     /* --- KOLUMNKONFIGURATION FÖR TABELLVYN (Tekniska kolumner dolda som standard) --- */
     const TABELL_KOLUMNER_DEFINITION = [
       { id: 'atgard', etikett: 'Åtgärd (Öppna)', standardSynlig: true },
       { id: 'globaltNr', etikett: 'Globalt nr', standardSynlig: false },
       { id: 'lokaltNr', etikett: 'Nr (i PDF)', standardSynlig: true },
-      { id: 'status', etikett: 'BEAst-status', standardSynlig: true },
+      { id: 'status', etikett: 'Status', standardSynlig: true },
       { id: 'beskrivning', etikett: 'Statusbeskrivning', standardSynlig: false },
-      { id: 'farg', etikett: 'Färg (BEAst)', standardSynlig: false },
+      { id: 'farg', etikett: 'Färg', standardSynlig: false },
       { id: 'andradAv', etikett: 'Status ändrad av', standardSynlig: true },
       { id: 'typ', etikett: 'Typ (Nål/Ruta/Yta)', standardSynlig: true },
       { id: 'mapp', etikett: 'Mapp', standardSynlig: true },
@@ -1381,8 +1547,8 @@
 
     laddaSparadeKolumnVal();
 
-    function normaliseraBeastStatus(råStatus, gammalKlarFlagga) {
-      if (råStatus && BEAST_STATUSAR[råStatus]) {
+    function normaliseraStatus(råStatus, gammalKlarFlagga) {
+      if (råStatus && GRANSKNINGS_STATUSAR[råStatus]) {
         return råStatus;
       }
       if (gammalKlarFlagga === true) {
@@ -1392,7 +1558,7 @@
     }
 
     function hamtaStatusInfo(statusKod) {
-      return BEAST_STATUSAR[statusKod] || BEAST_STATUSAR[STANDARD_STATUS];
+      return GRANSKNINGS_STATUSAR[statusKod] || GRANSKNINGS_STATUSAR[STANDARD_STATUS];
     }
 
     function arStatusHanterad(statusKod) {
@@ -1417,7 +1583,15 @@
     let spararTillDisk = false;
     let vantandeSparaEfterAktuell = false;
 
-    // Tillståndsvariabler för PDF, Zoom, Sidrotation, Lazy Rendering och kommentarer
+    /* --- TILLSTÅNDSVARIABLER FÖR FLIKAR (MAX 8 FLIKAR + LOCALSTORAGE) --- */
+    // Varje flik i oppnaFlikar: { id, pdfNyckel, zoomLage, scrollTop, scrollLeft, lastKommentarId, sokFras, filterForfattare, filterStatus, pdfDokument }
+    let oppnaFlikar = [];
+    let aktivFlikId = null;
+    let oppnaNastaValINyFlik = false;
+    let drarFlikId = null;
+    let sparaScrollTimer = null;
+
+    // Tillståndsvariabler för aktiv PDF, Zoom, Sidrotation, Lazy Rendering och kommentarer
     let inlastaPdfNycklar = [];
     let pdfSammanfattningKarta = new Map();
     let aktuellPdfNyckel = '';
@@ -1431,9 +1605,7 @@
     let minaSvar = [];
 
     // Sidrotationer (0, 90, 180, 270) per sida
-    // aktuellaSidRotationer: { [sidNr]: { vinkel: number, uppdateradVid: string, uppdateradAv: string } }
     let aktuellaSidRotationer = {};
-    // minaSidRotationer (sparas i användarens .comments.json): { [sidNr]: { vinkel, uppdateradVid, uppdateradAv } }
     let minaSidRotationer = {};
 
     let aktivtSvarKommentarId = null;
@@ -1461,6 +1633,13 @@
     let sokFras = '';
 
     // DOM-element
+    const flikRad = document.getElementById('flik-rad');
+    const flikLista = document.getElementById('flik-lista');
+    const flikAntalEtikett = document.getElementById('flik-antal-etikett');
+    const flikGransModal = document.getElementById('flik-grans-modal');
+    const stangFlikGransKnapp = document.getElementById('stang-flik-grans-knapp');
+    const oppnaNyFlikLageKnapp = document.getElementById('oppna-ny-flik-lage-knapp');
+
     const epostFalt = document.getElementById('epost-falt');
     const liveMappKnapp = document.getElementById('live-mapp-knapp');
     const pdfValjare = document.getElementById('pdf-valjare');
@@ -1470,8 +1649,6 @@
     const synkPrick = document.getElementById('synk-prick');
     const synkTidText = document.getElementById('synk-tid-text');
     const zoomValjare = document.getElementById('zoom-valjare');
-    const exporteraPdfKnapp = document.getElementById('exportera-pdf-knapp');
-    const exporteraAllaKnapp = document.getElementById('exportera-alla-knapp');
     const tabellVyKnapp = document.getElementById('tabell-vy-knapp');
     const vaxlaSynlighetKnapp = document.getElementById('vaxla-synlighet-knapp');
     const pdfVisningsyta = document.getElementById('pdf-visningsyta');
@@ -1543,6 +1720,358 @@
 
     uppdateraEpostFaltUtseende();
 
+    /* --- SPARA OCH ÅTERSTÄLL ÖPPNA FLIKAR I LOCALSTORAGE PER GRANSKNINGSMAPP --- */
+    function hamtaFlikLagringsNyckel() {
+      const mappNamn = mappHandtag?.name || 'standardmapp';
+      return `granskning_flikar_${mappNamn}`;
+    }
+
+    function sparaOppnaFlikarTillLocalStorage() {
+      if (!mappHandtag) return;
+      try {
+        sparaAktivFlikTillstand();
+        const aktivFlik = oppnaFlikar.find(f => f.id === aktivFlikId);
+        const lagringsObjekt = {
+          aktivPdfNyckel: aktivFlik ? aktivFlik.pdfNyckel : '',
+          flikar: oppnaFlikar.map(f => ({
+            pdfNyckel: f.pdfNyckel,
+            zoomLage: f.zoomLage || 'fit-width',
+            scrollTop: f.scrollTop || 0,
+            scrollLeft: f.scrollLeft || 0,
+            lastKommentarId: f.lastKommentarId || null,
+            sokFras: f.sokFras || '',
+            filterForfattare: f.filterForfattare || 'alla',
+            filterStatus: f.filterStatus || 'alla'
+          }))
+        };
+        localStorage.setItem(hamtaFlikLagringsNyckel(), JSON.stringify(lagringsObjekt));
+      } catch (fel) {
+        console.warn('Kunde inte spara öppna flikar i localStorage:', fel);
+      }
+    }
+
+    function lasSparadeFlikarFranLocalStorage(tillgangligaPdfNycklar) {
+      if (!mappHandtag) return null;
+      try {
+        const sparat = localStorage.getItem(hamtaFlikLagringsNyckel());
+        if (!sparat) return null;
+        const data = JSON.parse(sparat);
+        if (!data || !Array.isArray(data.flikar)) return null;
+
+        const tillgangligaSet = new Set(tillgangligaPdfNycklar);
+        const seddaNycklar = new Set();
+        const giltigaFlikar = [];
+
+        for (const f of data.flikar) {
+          if (f && f.pdfNyckel && tillgangligaSet.has(f.pdfNyckel) && !seddaNycklar.has(f.pdfNyckel)) {
+            seddaNycklar.add(f.pdfNyckel);
+            giltigaFlikar.push(f);
+            if (giltigaFlikar.length >= MAX_ANTAL_FLIKAR) break;
+          }
+        }
+
+        if (giltigaFlikar.length === 0) return null;
+
+        return {
+          aktivPdfNyckel: tillgangligaSet.has(data.aktivPdfNyckel) ? data.aktivPdfNyckel : giltigaFlikar[0].pdfNyckel,
+          flikar: giltigaFlikar
+        };
+      } catch (fel) {
+        console.warn('Kunde inte läsa sparade flikar från localStorage:', fel);
+        return null;
+      }
+    }
+
+    // Spara scrollposition till aktiv flik och localStorage när användaren scrollar i PDF-visningsytan
+    pdfVisningsyta.addEventListener('scroll', () => {
+      if (!aktivFlikId) return;
+      const flik = oppnaFlikar.find(f => f.id === aktivFlikId);
+      if (flik) {
+        flik.scrollTop = pdfVisningsyta.scrollTop;
+        flik.scrollLeft = pdfVisningsyta.scrollLeft;
+      }
+      if (sparaScrollTimer) clearTimeout(sparaScrollTimer);
+      sparaScrollTimer = setTimeout(() => {
+        sparaOppnaFlikarTillLocalStorage();
+      }, 400);
+    });
+
+    /* --- FLIKHANTERING (MAX 8 FLIKAR, DRA-OCH-SLÄPP FÖR ATT BYTA ORDNING) --- */
+    function visaFlikGransModal() {
+      flikGransModal.classList.add('oppen');
+    }
+
+    stangFlikGransKnapp.addEventListener('click', () => {
+      flikGransModal.classList.remove('oppen');
+    });
+
+    flikGransModal.addEventListener('click', (e) => {
+      if (e.target === flikGransModal) flikGransModal.classList.remove('oppen');
+    });
+
+    oppnaNyFlikLageKnapp.addEventListener('click', () => {
+      if (!oppnaNastaValINyFlik && oppnaFlikar.length >= MAX_ANTAL_FLIKAR) {
+        visaFlikGransModal();
+        return;
+      }
+      oppnaNastaValINyFlik = !oppnaNastaValINyFlik;
+      uppdateraNyFlikKnappUI();
+      if (oppnaNastaValINyFlik) {
+        pdfValjare.focus();
+      }
+    });
+
+    function uppdateraNyFlikKnappUI() {
+      oppnaNyFlikLageKnapp.classList.toggle('ny-flik-lage-aktiv', oppnaNastaValINyFlik);
+      oppnaNyFlikLageKnapp.textContent = oppnaNastaValINyFlik ? '➕ Välj PDF...' : '➕ Ny flik';
+    }
+
+    function sparaAktivFlikTillstand() {
+      if (!aktivFlikId) return;
+      const flik = oppnaFlikar.find(f => f.id === aktivFlikId);
+      if (!flik) return;
+
+      flik.zoomLage = valtZoomLage;
+      flik.scrollTop = pdfVisningsyta.scrollTop;
+      flik.scrollLeft = pdfVisningsyta.scrollLeft;
+      flik.lastKommentarId = lastKommentarId;
+      flik.sokFras = sokFras;
+      flik.filterForfattare = filterForfattare;
+      flik.filterStatus = filterStatus;
+      flik.pdfDokument = pdfDokument;
+    }
+
+    function ritaFlikRadDOM() {
+      flikLista.innerHTML = '';
+      flikRad.classList.toggle('synlig', oppnaFlikar.length > 0);
+      flikAntalEtikett.textContent = `${oppnaFlikar.length} / ${MAX_ANTAL_FLIKAR} flikar`;
+
+      oppnaFlikar.forEach((flik) => {
+        const { filnamn } = delaMappOchFilnamn(flik.pdfNyckel);
+        const statistik = pdfSammanfattningKarta.get(flik.pdfNyckel);
+        const statusTips = formateraPdfBrickaSuffix(statistik);
+
+        const flikEl = document.createElement('div');
+        flikEl.className = 'pdf-flik' + (flik.id === aktivFlikId ? ' aktiv' : '');
+        flikEl.draggable = true;
+        flikEl.dataset.flikId = flik.id;
+        flikEl.title = `${flik.pdfNyckel}${statusTips}\n(Dra för att byta ordning • Mittenklicka för att stänga)`;
+
+        const titelSpan = document.createElement('span');
+        titelSpan.className = 'flik-titel';
+        titelSpan.textContent = filnamn;
+
+        const stangKnapp = document.createElement('button');
+        stangKnapp.type = 'button';
+        stangKnapp.className = 'flik-stang-knapp';
+        stangKnapp.textContent = '×';
+        stangKnapp.title = 'Stäng flik';
+        stangKnapp.addEventListener('click', (e) => {
+          e.stopPropagation();
+          stangFlik(flik.id);
+        });
+
+        flikEl.appendChild(titelSpan);
+        flikEl.appendChild(stangKnapp);
+
+        flikEl.addEventListener('click', () => {
+          if (flik.id !== aktivFlikId) {
+            aktiveraFlik(flik.id);
+          }
+        });
+
+        flikEl.addEventListener('auxclick', (e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            stangFlik(flik.id);
+          }
+        });
+
+        flikEl.addEventListener('dragstart', (e) => {
+          drarFlikId = flik.id;
+          flikEl.classList.add('drar-flik');
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', flik.id); } catch (_) {}
+        });
+
+        flikEl.addEventListener('dragend', () => {
+          drarFlikId = null;
+          flikEl.classList.remove('drar-flik');
+          flikLista.querySelectorAll('.pdf-flik').forEach(el => {
+            el.classList.remove('slapp-mal-vanster', 'slapp-mal-hoger');
+          });
+        });
+
+        flikEl.addEventListener('dragover', (e) => {
+          if (!drarFlikId || drarFlikId === flik.id) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const rekt = flikEl.getBoundingClientRect();
+          const arVansterHalva = (e.clientX - rekt.left) < (rekt.width / 2);
+          flikEl.classList.toggle('slapp-mal-vanster', arVansterHalva);
+          flikEl.classList.toggle('slapp-mal-hoger', !arVansterHalva);
+        });
+
+        flikEl.addEventListener('dragleave', () => {
+          flikEl.classList.remove('slapp-mal-vanster', 'slapp-mal-hoger');
+        });
+
+        flikEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          flikEl.classList.remove('slapp-mal-vanster', 'slapp-mal-hoger');
+          if (!drarFlikId || drarFlikId === flik.id) return;
+
+          const franIdx = oppnaFlikar.findIndex(f => f.id === drarFlikId);
+          const tillIdx = oppnaFlikar.findIndex(f => f.id === flik.id);
+          if (franIdx === -1 || tillIdx === -1) return;
+
+          const rekt = flikEl.getBoundingClientRect();
+          const placeraEfter = (e.clientX - rekt.left) >= (rekt.width / 2);
+
+          const [flyttadFlik] = oppnaFlikar.splice(franIdx, 1);
+          let nyPlats = oppnaFlikar.findIndex(f => f.id === flik.id);
+          if (placeraEfter) nyPlats++;
+          oppnaFlikar.splice(nyPlats, 0, flyttadFlik);
+
+          ritaFlikRadDOM();
+          sparaOppnaFlikarTillLocalStorage();
+        });
+
+        flikLista.appendChild(flikEl);
+      });
+    }
+
+    async function oppnaEllerBytTillPdfFlik(pdfNyckel, { tvingaNyFlik = false } = {}) {
+      if (!pdfNyckel) return;
+
+      if (harOsparadeAndringar) {
+        await sparaAktuellAnvandaresKommentarer();
+      }
+
+      const befintligFlik = oppnaFlikar.find(f => f.pdfNyckel === pdfNyckel);
+      if (befintligFlik) {
+        oppnaNastaValINyFlik = false;
+        uppdateraNyFlikKnappUI();
+        await aktiveraFlik(befintligFlik.id);
+        return;
+      }
+
+      const skaSkapaNy = tvingaNyFlik || oppnaNastaValINyFlik || oppnaFlikar.length === 0;
+
+      if (skaSkapaNy) {
+        if (oppnaFlikar.length >= MAX_ANTAL_FLIKAR) {
+          oppnaNastaValINyFlik = false;
+          uppdateraNyFlikKnappUI();
+          pdfValjare.value = aktuellPdfNyckel || '';
+          visaFlikGransModal();
+          return;
+        }
+
+        sparaAktivFlikTillstand();
+
+        const nyFlik = {
+          id: 'flik-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          pdfNyckel,
+          zoomLage: valtZoomLage || 'fit-width',
+          scrollTop: 0,
+          scrollLeft: 0,
+          lastKommentarId: null,
+          sokFras: '',
+          filterForfattare: 'alla',
+          filterStatus: 'alla',
+          pdfDokument: null
+        };
+
+        oppnaFlikar.push(nyFlik);
+        oppnaNastaValINyFlik = false;
+        uppdateraNyFlikKnappUI();
+        await aktiveraFlik(nyFlik.id);
+      } else {
+        const aktivFlik = oppnaFlikar.find(f => f.id === aktivFlikId);
+        if (aktivFlik) {
+          if (aktivFlik.pdfDokument && typeof aktivFlik.pdfDokument.destroy === 'function') {
+            try { await aktivFlik.pdfDokument.destroy(); } catch (_) {}
+          }
+          aktivFlik.pdfNyckel = pdfNyckel;
+          aktivFlik.scrollTop = 0;
+          aktivFlik.scrollLeft = 0;
+          aktivFlik.lastKommentarId = null;
+          aktivFlik.pdfDokument = null;
+          await aktiveraFlik(aktivFlik.id, { tvingaOmladdning: true });
+        }
+      }
+    }
+
+    async function aktiveraFlik(flikId, { tvingaOmladdning = false } = {}) {
+      const malFlik = oppnaFlikar.find(f => f.id === flikId);
+      if (!malFlik) return;
+
+      if (aktivFlikId && aktivFlikId !== flikId && !tvingaOmladdning) {
+        if (harOsparadeAndringar) {
+          await sparaAktuellAnvandaresKommentarer();
+        }
+        sparaAktivFlikTillstand();
+      }
+
+      aktivFlikId = malFlik.id;
+      valtZoomLage = malFlik.zoomLage || 'fit-width';
+      zoomValjare.value = valtZoomLage;
+      sokFras = malFlik.sokFras || '';
+      sokFalt.value = sokFras;
+      filterForfattare = malFlik.filterForfattare || 'alla';
+      filterStatus = malFlik.filterStatus || 'alla';
+      filterStatusValjare.value = filterStatus;
+      lastKommentarId = malFlik.lastKommentarId || null;
+
+      pdfValjare.value = malFlik.pdfNyckel;
+      ritaFlikRadDOM();
+
+      await laddaPdfFranMinne(malFlik.pdfNyckel, malFlik);
+
+      pdfVisningsyta.scrollTop = malFlik.scrollTop || 0;
+      pdfVisningsyta.scrollLeft = malFlik.scrollLeft || 0;
+      sparaOppnaFlikarTillLocalStorage();
+    }
+
+    async function stangFlik(flikId) {
+      const idx = oppnaFlikar.findIndex(f => f.id === flikId);
+      if (idx === -1) return;
+
+      if (flikId === aktivFlikId && harOsparadeAndringar) {
+        await sparaAktuellAnvandaresKommentarer();
+      }
+
+      const [borttagenFlik] = oppnaFlikar.splice(idx, 1);
+      if (borttagenFlik.pdfDokument && typeof borttagenFlik.pdfDokument.destroy === 'function') {
+        try { await borttagenFlik.pdfDokument.destroy(); } catch (_) {}
+      }
+
+      if (oppnaFlikar.length === 0) {
+        aktivFlikId = null;
+        aktuellPdfNyckel = '';
+        aktuellPdfNamn = '';
+        pdfDokument = null;
+        allaKommentarer = [];
+        pdfValjare.value = '';
+        pdfVisningsyta.innerHTML = '<div class="tomt-lage"><h3>Ingen PDF-flik öppen</h3><p style="color:var(--text-dold);margin-top:0.4rem;">Välj ett PDF-dokument i rullgardinsmenyn ovan för att börja granska.</p></div>';
+        kommentarLista.innerHTML = '';
+        kommentarAntal.textContent = '0';
+        ritaFlikRadDOM();
+        sparaOppnaFlikarTillLocalStorage();
+        return;
+      }
+
+      if (flikId === aktivFlikId) {
+        const nastaIdx = Math.min(idx, oppnaFlikar.length - 1);
+        aktivFlikId = null;
+        await aktiveraFlik(oppnaFlikar[nastaIdx].id);
+      } else {
+        ritaFlikRadDOM();
+        sparaOppnaFlikarTillLocalStorage();
+      }
+    }
+
     /* --- MATEMATIK FÖR SIDROTATION & KOORDINATOMRÄKNING (0° <-> 90°/180°/270°) --- */
     function normaliseraVinkel(vinkel) {
       const v = Number(vinkel) || 0;
@@ -1555,7 +2084,6 @@
       return normaliseraVinkel(typeof post === 'object' ? post.vinkel : post);
     }
 
-    // Omvandlar en koordinat från roterad skärmvy (0..1) till JSON-filens oroterade 0°-läge (0..1)
     function skarmTillBasKoordinat(xSkarm, ySkarm, sidNr) {
       const vinkel = hamtaSidansExtraRotation(sidNr);
       let x0 = xSkarm;
@@ -1576,7 +2104,6 @@
       };
     }
 
-    // Omvandlar en koordinat från JSON-filens oroterade 0°-läge (0..1) till roterad skärmvy (0..1)
     function basTillSkarmKoordinat(xBas, yBas, sidNr) {
       const vinkel = hamtaSidansExtraRotation(sidNr);
       let xS = xBas;
@@ -1683,16 +2210,19 @@
     sokFalt.addEventListener('input', (e) => {
       sokFras = e.target.value.trim().toLowerCase();
       ritaAllaMarkeringarOchSidopanel();
+      sparaOppnaFlikarTillLocalStorage();
     });
 
     filterForfattareValjare.addEventListener('change', (e) => {
       filterForfattare = e.target.value;
       ritaAllaMarkeringarOchSidopanel();
+      sparaOppnaFlikarTillLocalStorage();
     });
 
     filterStatusValjare.addEventListener('change', (e) => {
       filterStatus = e.target.value;
       ritaAllaMarkeringarOchSidopanel();
+      sparaOppnaFlikarTillLocalStorage();
     });
 
     vaxlaSynlighetKnapp.addEventListener('click', () => {
@@ -1793,6 +2323,7 @@
         }
       }
       uppdateraPdfValjareEtiketter();
+      ritaFlikRadDOM();
     }
 
     function uppdateraAktuellPdfBricka() {
@@ -1835,6 +2366,17 @@
         mappHandtag = handtag;
         mappHandtagCache.clear();
         jsonInnehallCache.clear();
+
+        for (const flik of oppnaFlikar) {
+          if (flik.pdfDokument && typeof flik.pdfDokument.destroy === 'function') {
+            try { await flik.pdfDokument.destroy(); } catch (_) {}
+          }
+        }
+        oppnaFlikar = [];
+        aktivFlikId = null;
+        oppnaNastaValINyFlik = false;
+        uppdateraNyFlikKnappUI();
+
         synkIntervallValjare.disabled = false;
         synkaNuKnapp.disabled = false;
 
@@ -2015,7 +2557,6 @@
 
       const aktuellAnvandare = hamtaAktuellEpost();
 
-      // Kontrollera om någon sidas rotation har ändrats av en annan granskare
       const sidorMedAndradRotation = [];
       const nyaSidRotationer = { ...globalSidRotationKarta };
       if (harOsparadeAndringar) {
@@ -2053,7 +2594,7 @@
         for (const k of kombinerade) {
           const lokalStatus = minaStatusUppdateringar[k.id];
           if (lokalStatus && (!k.statusUppdateradVid || lokalStatus.uppdateradVid >= k.statusUppdateradVid)) {
-            k.status = normaliseraBeastStatus(lokalStatus.status, lokalStatus.klar);
+            k.status = normaliseraStatus(lokalStatus.status, lokalStatus.klar);
             k.statusUppdateradVid = lokalStatus.uppdateradVid;
             k.statusUppdateradAv = lokalStatus.uppdateradAv;
           }
@@ -2202,7 +2743,7 @@
 
       const saknarPdf = pdfNycklar.length === 0;
       pdfValjare.disabled = saknarPdf;
-      exporteraAllaKnapp.disabled = saknarPdf;
+      oppnaNyFlikLageKnapp.disabled = saknarPdf;
       tabellVyKnapp.disabled = saknarPdf;
       vaxlaSynlighetKnapp.disabled = saknarPdf;
     }
@@ -2221,8 +2762,26 @@
       fyllPdfValjareDOM(pdfNycklar);
 
       if (pdfNycklar.length > 0) {
-        pdfValjare.value = pdfNycklar[0];
-        await laddaPdfFranMinne(pdfNycklar[0]);
+        // Kontrollera om det finns sparade flikar i localStorage för denna granskningsmapp
+        const sparadeFlikarData = lasSparadeFlikarFranLocalStorage(pdfNycklar);
+        if (sparadeFlikarData && sparadeFlikarData.flikar.length > 0) {
+          oppnaFlikar = sparadeFlikarData.flikar.map((f, idx) => ({
+            id: 'flik-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 6),
+            pdfNyckel: f.pdfNyckel,
+            zoomLage: f.zoomLage || 'fit-width',
+            scrollTop: f.scrollTop || 0,
+            scrollLeft: f.scrollLeft || 0,
+            lastKommentarId: f.lastKommentarId || null,
+            sokFras: f.sokFras || '',
+            filterForfattare: f.filterForfattare || 'alla',
+            filterStatus: f.filterStatus || 'alla',
+            pdfDokument: null
+          }));
+          const malFlik = oppnaFlikar.find(f => f.pdfNyckel === sparadeFlikarData.aktivPdfNyckel) || oppnaFlikar[0];
+          await aktiveraFlik(malFlik.id);
+        } else {
+          await oppnaEllerBytTillPdfFlik(pdfNycklar[0], { tvingaNyFlik: true });
+        }
         await beraknaAllaPdfSammanfattningar();
       } else {
         alert('Inga PDF-filer hittades i den valda mappen.');
@@ -2230,12 +2789,19 @@
     }
 
     pdfValjare.addEventListener('change', (e) => {
-      if (e.target.value) laddaPdfFranMinne(e.target.value);
+      if (e.target.value) {
+        oppnaEllerBytTillPdfFlik(e.target.value);
+      }
     });
 
     zoomValjare.addEventListener('change', async (e) => {
       valtZoomLage = e.target.value;
+      if (aktivFlikId) {
+        const flik = oppnaFlikar.find(f => f.id === aktivFlikId);
+        if (flik) flik.zoomLage = valtZoomLage;
+      }
       if (pdfDokument) await ritaAllaSidor();
+      sparaOppnaFlikarTillLocalStorage();
     });
 
     window.addEventListener('resize', () => {
@@ -2261,28 +2827,29 @@
       return parseFloat(valtZoomLage) || 1.25;
     }
 
-    async function laddaPdfFranMinne(pdfNyckel) {
+    async function laddaPdfFranMinne(pdfNyckel, flikObjekt = null) {
       try {
         const pdfFil = inlastaFilerKarta.get(pdfNyckel);
         if (!pdfFil) return;
 
-        if (pdfDokument && typeof pdfDokument.destroy === 'function') {
-          try { await pdfDokument.destroy(); } catch (_) {}
-        }
-
         aktuellPdfNyckel = pdfNyckel;
         aktuellPdfNamn = pdfFil.name;
         aktivtSvarKommentarId = null;
-        const arrayBuffer = await pdfFil.arrayBuffer();
 
-        pdfDokument = await pdfjsLib.getDocument({
-          data: arrayBuffer,
-          disableFontFace: true
-        }).promise;
+        if (flikObjekt && flikObjekt.pdfDokument) {
+          pdfDokument = flikObjekt.pdfDokument;
+        } else {
+          const arrayBuffer = await pdfFil.arrayBuffer();
+          pdfDokument = await pdfjsLib.getDocument({
+            data: arrayBuffer,
+            disableFontFace: true
+          }).promise;
+          if (flikObjekt) {
+            flikObjekt.pdfDokument = pdfDokument;
+          }
+        }
 
         zoomValjare.disabled = false;
-        exporteraPdfKnapp.disabled = false;
-        exporteraAllaKnapp.disabled = false;
         tabellVyKnapp.disabled = false;
         vaxlaSynlighetKnapp.disabled = false;
         harOsparadeAndringar = false;
@@ -2338,7 +2905,6 @@
           const data = await hamtaEllerLasJsonData(nyckel, fil);
           const filForfattare = (data.forfattare || data.author || filnamn.slice(prefix.length, -suffix.length)).trim().toLowerCase();
 
-          // Läs in sidrotationer om sådana sparats i filen
           const råSidRotationer = data.sidRotationer || data.pageRotations;
           if (råSidRotationer && typeof råSidRotationer === 'object') {
             const normRotKarta = {};
@@ -2364,7 +2930,7 @@
             const normaliseradStatusKarta = {};
             for (const [kId, st] of Object.entries(råStatusUppdateringar)) {
               if (!st || typeof st !== 'object') continue;
-              const statusKod = normaliseraBeastStatus(st.status, st.klar ?? st.resolved);
+              const statusKod = normaliseraStatus(st.status, st.klar ?? st.resolved);
               const stTid = st.uppdateradVid || st.updatedAt || '';
               const stAv = st.uppdateradAv || st.updatedBy || filForfattare;
 
@@ -2429,7 +2995,7 @@
                 normaliseradTyp = 'polygon';
               }
 
-              const statusKod = normaliseraBeastStatus(k.status, k.klar ?? k.resolved);
+              const statusKod = normaliseraStatus(k.status, k.klar ?? k.resolved);
 
               sammanslagna.push({
                 id: k.id,
@@ -2476,7 +3042,7 @@
     }
 
     function andraKommentarStatus(kommentar, nyStatusKod) {
-      if (!BEAST_STATUSAR[nyStatusKod]) return;
+      if (!GRANSKNINGS_STATUSAR[nyStatusKod]) return;
       const aktuellAnvandare = kontrolleraEpostEllerVarna();
       if (!aktuellAnvandare) {
         ritaAllaMarkeringarOchSidopanel();
@@ -2521,7 +3087,7 @@
       }
       kommentar.svar.push(nyttSvar);
 
-      if (nyStatusVidSvar && BEAST_STATUSAR[nyStatusVidSvar] && nyStatusVidSvar !== kommentar.status) {
+      if (nyStatusVidSvar && GRANSKNINGS_STATUSAR[nyStatusVidSvar] && nyStatusVidSvar !== kommentar.status) {
         kommentar.status = nyStatusVidSvar;
         kommentar.statusUppdateradVid = nu;
         kommentar.statusUppdateradAv = aktuellAnvandare;
@@ -2634,7 +3200,6 @@
         laddarDiv.textContent = `Laddar sida ${sidNr}...`;
         behallare.appendChild(laddarDiv);
 
-        // Knapp för att rotera denna enskilda sida 90° medurs
         const roteraKnapp = document.createElement('button');
         roteraKnapp.type = 'button';
         roteraKnapp.className = 'rotera-sida-knapp';
@@ -2805,7 +3370,6 @@
         return;
       }
 
-      // Omvandla rutans hörn från skärmens (eventuellt roterade) koordinater till 0°-baskoordinater
       const basPunkter = aktuellaSkarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
       const basMittpunkt = beraknaPolygonMittpunkt(basPunkter);
 
@@ -3117,7 +3681,6 @@
       }
 
       const { lager, sidNr, skarmPunkter } = aktivtPolygonUtkast;
-      // Omvandla polygonens hörnpunkter till sidans oroterade 0°-baskoordinater
       const basPunkter = skarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
       const basMittpunkt = beraknaPolygonMittpunkt(basPunkter);
 
@@ -3131,6 +3694,10 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (flikGransModal.classList.contains('oppen')) {
+          flikGransModal.classList.remove('oppen');
+          return;
+        }
         if (kolumnValjareMeny.classList.contains('oppen')) {
           kolumnValjareMeny.classList.remove('oppen');
           return;
@@ -3143,6 +3710,11 @@
             return;
           }
           stangTabellVy();
+          return;
+        }
+        if (oppnaNastaValINyFlik) {
+          oppnaNastaValINyFlik = false;
+          uppdateraNyFlikKnappUI();
           return;
         }
         if (aktivtPolygonUtkast) avbrytPolygonUtkast();
@@ -3364,7 +3936,7 @@
       const minaKommentarer = allaKommentarer
         .filter(k => k.forfattare === aktuellAnvandare)
         .map(({ id, typ, sida, xProcent, yProcent, punkter, innehall, skapadVid, status, statusUppdateradVid, statusUppdateradAv }) => {
-          const statusKod = normaliseraBeastStatus(status);
+          const statusKod = normaliseraStatus(status);
           const statusObj = hamtaStatusInfo(statusKod);
           const post = {
             id,
@@ -3530,47 +4102,10 @@
       URL.revokeObjectURL(url);
     }
 
-    exporteraPdfKnapp.addEventListener('click', () => {
-      if (!aktuellPdfNamn || allaKommentarer.length === 0) {
-        alert('Det finns inga kommentarer att exportera för denna PDF.');
-        return;
-      }
-
-      const { mapp, filnamn } = delaMappOchFilnamn(aktuellPdfNyckel);
-      const rubriker = ['Nr', 'BEAst-status', 'Statusbeskrivning', 'Färg (BEAst)', 'Status ändrad av', 'Typ', 'Mapp', 'PDF-dokument', 'Fullständig sökväg', 'Sida', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'X (%)', 'Y (%)', 'Ytpunkter'];
-      const rader = allaKommentarer.map((k, index) => {
-        const typEtikett = k.typ === 'ruta' ? 'Ruta' : (k.typ === 'polygon' ? 'Polygon' : 'Nål');
-        const stInfo = hamtaStatusInfo(k.status);
-        return [
-          index + 1,
-          stInfo.kod,
-          stInfo.beskrivning,
-          stInfo.fargNamn,
-          k.statusUppdateradAv || '',
-          typEtikett,
-          mapp || '(Rotmapp)',
-          filnamn,
-          aktuellPdfNyckel,
-          k.sida,
-          k.forfattare,
-          k.innehall,
-          formateraSvarForCsv(k.svar),
-          k.skapadVid ? new Date(k.skapadVid).toLocaleString('sv-SE') : '',
-          (k.xProcent * 100).toFixed(1) + '%',
-          (k.yProcent * 100).toFixed(1) + '%',
-          Array.isArray(k.punkter)
-            ? k.punkter.map(p => `(${(p.xProcent * 100).toFixed(1)}%, ${(p.yProcent * 100).toFixed(1)}%)`).join(' ')
-            : ''
-        ];
-      });
-
-      laddaNerCsvFil(rubriker, rader, `${aktuellPdfNamn}.kommentarer.csv`);
-    });
-
     async function exporteraAllaPdfTillCsv() {
       if (inlastaPdfNycklar.length === 0) return;
 
-      const rubriker = ['Globalt nr', 'Nr (i PDF)', 'BEAst-status', 'Statusbeskrivning', 'Färg (BEAst)', 'Status ändrad av', 'Typ', 'Mapp', 'PDF-dokument', 'Fullständig sökväg', 'Sida', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'X (%)', 'Y (%)', 'Ytpunkter'];
+      const rubriker = ['Globalt nr', 'Nr (i PDF)', 'Status', 'Statusbeskrivning', 'Färg', 'Status ändrad av', 'Typ', 'Mapp', 'PDF-dokument', 'Fullständig sökväg', 'Sida', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'X (%)', 'Y (%)', 'Ytpunkter'];
       const rader = [];
       let globaltIndex = 1;
 
@@ -3618,7 +4153,6 @@
       laddaNerCsvFil(rubriker, rader, `alla-mappkommentarer-${datumStämpel}.csv`);
     }
 
-    exporteraAllaKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
     tabellExporteraKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
 
     /* --- KOLUMNVÄLJARE FÖR TABELLVYN --- */
@@ -3881,7 +4415,7 @@
             farg: hamtaForfattarFarg(anvandare)
           });
 
-          if (valdNyStatus && BEAST_STATUSAR[valdNyStatus]) {
+          if (valdNyStatus && GRANSKNINGS_STATUSAR[valdNyStatus]) {
             data.statusUppdateringar[post.kommentar.id] = {
               status: valdNyStatus,
               uppdateradVid: nu,
@@ -4032,13 +4566,13 @@
         tdLokaltNr.textContent = `#${post.lokaltNr}`;
         tr.appendChild(tdLokaltNr);
 
-        // 4. BEAst-status (interaktiv väljare)
+        // 4. Status (interaktiv väljare)
         const tdStatus = skapaTabellCell('status');
         const statusSelect = document.createElement('select');
         statusSelect.className = 'status-valjare-kort';
         statusSelect.style.backgroundColor = stInfo.farg;
         statusSelect.title = `${stInfo.kod}: ${stInfo.beskrivning}`;
-        for (const stObj of Object.values(BEAST_STATUSAR)) {
+        for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
           const opt = document.createElement('option');
           opt.value = stObj.kod;
           opt.textContent = stObj.kod;
@@ -4084,7 +4618,7 @@
         tdBeskrivning.textContent = stInfo.beskrivning;
         tr.appendChild(tdBeskrivning);
 
-        // 6. Färg (BEAst)
+        // 6. Färg
         const tdFarg = skapaTabellCell('farg');
         tdFarg.style.whiteSpace = 'nowrap';
         tdFarg.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${stInfo.farg};margin-right:5px;vertical-align:middle;"></span>${stInfo.fargNamn}`;
@@ -4265,7 +4799,7 @@
           behallOpt.textContent = `Behåll status (${stInfo.kod})`;
           statusValjareSvar.appendChild(behallOpt);
 
-          for (const stObj of Object.values(BEAST_STATUSAR)) {
+          for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
             if (stObj.kod === stInfo.kod) continue;
             const opt = document.createElement('option');
             opt.value = stObj.kod;
@@ -4357,8 +4891,9 @@
       stangTabellVy();
 
       if (aktuellPdfNyckel !== pdfNyckel) {
-        pdfValjare.value = pdfNyckel;
-        await laddaPdfFranMinne(pdfNyckel);
+        const finnsRedanFlik = oppnaFlikar.some(f => f.pdfNyckel === pdfNyckel);
+        const kanOppnaNyFlik = !finnsRedanFlik && oppnaFlikar.length < MAX_ANTAL_FLIKAR;
+        await oppnaEllerBytTillPdfFlik(pdfNyckel, { tvingaNyFlik: kanOppnaNyFlik });
       }
 
       const målKommentar = allaKommentarer.find(k => k.id === kommentarId);
@@ -4381,6 +4916,7 @@
 
       lastKommentarId = kommentarId;
       uppdateraLastMarkeringUI();
+      sparaOppnaFlikarTillLocalStorage();
 
       const ui = kommentarGranssnittsElement.get(kommentarId);
       if (ui) {
@@ -4394,7 +4930,7 @@
 
     function uppdateraForfattarFilterAlternativ() {
       const forfattareLista = Array.from(new Set(allaKommentarer.map(k => k.forfattare))).sort();
-      const foregaendeVarde = filterForfattareValjare.value;
+      const foregaendeVarde = filterForfattare;
       filterForfattareValjare.innerHTML = '<option value="alla">👤 Alla granskare</option>';
       for (const forfattare of forfattareLista) {
         const alt = document.createElement('option');
@@ -4629,7 +5165,7 @@
         statusValjare.style.backgroundColor = statusFarg;
         statusValjare.title = `${statusInfo.kod}: ${statusInfo.beskrivning}`;
 
-        for (const stObj of Object.values(BEAST_STATUSAR)) {
+        for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
           const opt = document.createElement('option');
           opt.value = stObj.kod;
           opt.textContent = `${stObj.kod} (${stObj.fargNamn})`;
@@ -4729,7 +5265,7 @@
           behallOpt.textContent = `Behåll (${statusInfo.kod})`;
           svarStatusValjare.appendChild(behallOpt);
 
-          for (const stObj of Object.values(BEAST_STATUSAR)) {
+          for (const stObj of Object.values(GRANSKNINGS_STATUSAR)) {
             if (stObj.kod === statusInfo.kod) continue;
             const opt = document.createElement('option');
             opt.value = stObj.kod;
@@ -4794,6 +5330,7 @@
         kort.addEventListener('click', () => {
           lastKommentarId = kommentar.id;
           uppdateraLastMarkeringUI();
+          sparaOppnaFlikarTillLocalStorage();
           if (kommentarerSynliga && nal) {
             nal.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
@@ -4805,6 +5342,7 @@
           e.stopPropagation();
           lastKommentarId = kommentar.id;
           uppdateraLastMarkeringUI();
+          sparaOppnaFlikarTillLocalStorage();
           kort.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
 
@@ -4815,6 +5353,7 @@
             e.stopPropagation();
             lastKommentarId = kommentar.id;
             uppdateraLastMarkeringUI();
+            sparaOppnaFlikarTillLocalStorage();
             kort.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           });
         }
