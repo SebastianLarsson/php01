@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF-granskningsverktyg (BEAst 3.0, Interaktiv Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
+  <title>PDF-granskningsverktyg (BEAst 3.0, Sidrotation, Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
@@ -243,6 +243,42 @@
       inset: 0;
       cursor: crosshair;
       z-index: 5;
+    }
+
+    /* Rotationsknapp uppe i högra hörnet på varje PDF-sida */
+    .rotera-sida-knapp {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 22;
+      background: rgba(15, 23, 42, 0.78);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 5px;
+      padding: 0.32rem 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: 1.2;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      opacity: 0;
+      transition: opacity 0.15s ease, background 0.15s ease, transform 0.12s ease;
+      backdrop-filter: blur(3px);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+    .sid-behallare:hover .rotera-sida-knapp,
+    .rotera-sida-knapp.ar-roterad {
+      opacity: 1;
+    }
+    .rotera-sida-knapp.ar-roterad {
+      background: rgba(37, 99, 235, 0.9);
+      border-color: #93c5fd;
+    }
+    .rotera-sida-knapp:hover {
+      background: var(--accent);
+      transform: scale(1.04);
     }
 
     .markerings-svg {
@@ -583,7 +619,7 @@
       display: flex;
       flex-direction: column;
       gap: 0.1rem;
-      padding-right: 3.2rem; /* Lämnar plats för "◄ Vald"-brickan längst ner till höger */
+      padding-right: 3.2rem;
     }
     .kort-atgarder {
       display: inline-flex;
@@ -1088,6 +1124,7 @@
           <li>Skriv in din <strong>E-post</strong> i rutan längst upp till vänster (obligatoriskt). Din kommentarfil döps automatiskt efter hela din e-postadress.</li>
           <li>Klicka på <strong>🔄 Öppna granskningsmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
           <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
+          <li>Behöver en enskild sida vridas? Håll musen över sidan och klicka på <strong>↻ Rotera 90°</strong> uppe till höger på sidan – alla nålar och rutor räknas om automatiskt och rotationen sparas.</li>
           <li>Klicka på <strong>📋 Tabellvy (Alla PDF)</strong> längst upp till höger för att sortera, filtrera, svara, redigera och ändra status bland samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
         </ol>
         <div class="beast-lista">
@@ -1380,7 +1417,7 @@
     let spararTillDisk = false;
     let vantandeSparaEfterAktuell = false;
 
-    // Tillståndsvariabler för PDF, Zoom, Lazy Rendering och kommentarer
+    // Tillståndsvariabler för PDF, Zoom, Sidrotation, Lazy Rendering och kommentarer
     let inlastaPdfNycklar = [];
     let pdfSammanfattningKarta = new Map();
     let aktuellPdfNyckel = '';
@@ -1392,6 +1429,13 @@
     let allaKommentarer = [];
     let minaStatusUppdateringar = {};
     let minaSvar = [];
+
+    // Sidrotationer (0, 90, 180, 270) per sida
+    // aktuellaSidRotationer: { [sidNr]: { vinkel: number, uppdateradVid: string, uppdateradAv: string } }
+    let aktuellaSidRotationer = {};
+    // minaSidRotationer (sparas i användarens .comments.json): { [sidNr]: { vinkel, uppdateradVid, uppdateradAv } }
+    let minaSidRotationer = {};
+
     let aktivtSvarKommentarId = null;
     let aktivPopruta = null;
 
@@ -1498,6 +1542,117 @@
     }
 
     uppdateraEpostFaltUtseende();
+
+    /* --- MATEMATIK FÖR SIDROTATION & KOORDINATOMRÄKNING (0° <-> 90°/180°/270°) --- */
+    function normaliseraVinkel(vinkel) {
+      const v = Number(vinkel) || 0;
+      return ((v % 360) + 360) % 360;
+    }
+
+    function hamtaSidansExtraRotation(sidNr) {
+      const post = aktuellaSidRotationer[sidNr];
+      if (!post) return 0;
+      return normaliseraVinkel(typeof post === 'object' ? post.vinkel : post);
+    }
+
+    // Omvandlar en koordinat från roterad skärmvy (0..1) till JSON-filens oroterade 0°-läge (0..1)
+    function skarmTillBasKoordinat(xSkarm, ySkarm, sidNr) {
+      const vinkel = hamtaSidansExtraRotation(sidNr);
+      let x0 = xSkarm;
+      let y0 = ySkarm;
+      if (vinkel === 90) {
+        x0 = ySkarm;
+        y0 = 1 - xSkarm;
+      } else if (vinkel === 180) {
+        x0 = 1 - xSkarm;
+        y0 = 1 - ySkarm;
+      } else if (vinkel === 270) {
+        x0 = 1 - ySkarm;
+        y0 = xSkarm;
+      }
+      return {
+        xProcent: begransa01(x0),
+        yProcent: begransa01(y0)
+      };
+    }
+
+    // Omvandlar en koordinat från JSON-filens oroterade 0°-läge (0..1) till roterad skärmvy (0..1)
+    function basTillSkarmKoordinat(xBas, yBas, sidNr) {
+      const vinkel = hamtaSidansExtraRotation(sidNr);
+      let xS = xBas;
+      let yS = yBas;
+      if (vinkel === 90) {
+        xS = 1 - yBas;
+        yS = xBas;
+      } else if (vinkel === 180) {
+        xS = 1 - xBas;
+        yS = 1 - yBas;
+      } else if (vinkel === 270) {
+        xS = yBas;
+        yS = 1 - xBas;
+      }
+      return {
+        xProcent: begransa01(xS),
+        yProcent: begransa01(yS)
+      };
+    }
+
+    async function roteraEnskildSida90Grader(sidNr) {
+      const aktuellAnvandare = kontrolleraEpostEllerVarna();
+      if (!aktuellAnvandare || !pdfDokument) return;
+
+      stangAktivPopruta();
+      avbrytPolygonUtkast();
+      avbrytRutaUtkast();
+
+      const nuvarandeVinkel = hamtaSidansExtraRotation(sidNr);
+      const nyVinkel = (nuvarandeVinkel + 90) % 360;
+      const nu = new Date().toISOString();
+
+      const rotObj = {
+        vinkel: nyVinkel,
+        uppdateradVid: nu,
+        uppdateradAv: aktuellAnvandare
+      };
+
+      aktuellaSidRotationer[sidNr] = rotObj;
+      minaSidRotationer[sidNr] = rotObj;
+
+      await ritaOmEnskildSidaVidRotation(sidNr);
+      ritaAllaMarkeringarOchSidopanel();
+      markeraAndradOchAutospara();
+    }
+
+    async function ritaOmEnskildSidaVidRotation(sidNr) {
+      const behallare = pdfVisningsyta.querySelector(`.sid-behallare[data-sid-nummer="${sidNr}"]`);
+      if (!behallare || !pdfDokument) return;
+
+      const gammalCanvas = behallare.querySelector('canvas');
+      if (gammalCanvas) gammalCanvas.remove();
+
+      behallare.dataset.ritad = 'false';
+      behallare.dataset.ritarNu = 'false';
+
+      const roteraKnapp = behallare.querySelector('.rotera-sida-knapp');
+      if (roteraKnapp) {
+        uppdateraRoteraKnappUtseende(roteraKnapp, sidNr);
+      }
+
+      await ritaEnskildSidaCanvas(behallare);
+    }
+
+    function uppdateraRoteraKnappUtseende(knappEl, sidNr) {
+      const vinkel = hamtaSidansExtraRotation(sidNr);
+      if (vinkel > 0) {
+        knappEl.classList.add('ar-roterad');
+        knappEl.textContent = `↻ ${vinkel}°`;
+        knappEl.title = `Sida ${sidNr} är roterad ${vinkel}°. Klicka för att rotera +90°`;
+      } else {
+        knappEl.classList.remove('ar-roterad');
+        knappEl.textContent = '↻ Rotera 90°';
+        knappEl.title = `Rotera sida ${sidNr} 90° medurs`;
+      }
+    }
 
     function aterstallSidopanelTips() {
       if (aktuelltVerktyg === 'nal') {
@@ -1850,8 +2005,45 @@
         return;
       }
 
-      const { sammanslagna, anvandarStatusKarta, anvandarSvarKarta } = await hamtaSammanslagnaKommentarerOchStatusForPdf(aktuellPdfNyckel);
+      const {
+        sammanslagna,
+        anvandarStatusKarta,
+        anvandarSvarKarta,
+        globalSidRotationKarta,
+        anvandarSidRotationKarta
+      } = await hamtaSammanslagnaKommentarerOchStatusForPdf(aktuellPdfNyckel);
+
       const aktuellAnvandare = hamtaAktuellEpost();
+
+      // Kontrollera om någon sidas rotation har ändrats av en annan granskare
+      const sidorMedAndradRotation = [];
+      const nyaSidRotationer = { ...globalSidRotationKarta };
+      if (harOsparadeAndringar) {
+        for (const [sidNr, lokalRot] of Object.entries(minaSidRotationer)) {
+          const diskRot = nyaSidRotationer[sidNr];
+          if (!diskRot || (lokalRot.uppdateradVid || '') >= (diskRot.uppdateradVid || '')) {
+            nyaSidRotationer[sidNr] = lokalRot;
+          }
+        }
+      } else {
+        minaSidRotationer = anvandarSidRotationKarta.get(aktuellAnvandare) || {};
+      }
+
+      if (pdfDokument) {
+        for (let s = 1; s <= pdfDokument.numPages; s++) {
+          const gammalV = hamtaSidansExtraRotation(s);
+          const nyPost = nyaSidRotationer[s];
+          const nyV = nyPost ? normaliseraVinkel(nyPost.vinkel) : 0;
+          if (gammalV !== nyV) {
+            sidorMedAndradRotation.push(s);
+          }
+        }
+      }
+      aktuellaSidRotationer = nyaSidRotationer;
+
+      for (const sidNr of sidorMedAndradRotation) {
+        await ritaOmEnskildSidaVidRotation(sidNr);
+      }
 
       if (harOsparadeAndringar) {
         const minaIMinnet = allaKommentarer.filter(k => k.forfattare === aktuellAnvandare);
@@ -2054,9 +2246,15 @@
       }, 200);
     });
 
-    function beraknaSkalaForSida(sida) {
+    function hamtaSidaViewportMedRotation(sida, sidNr, skala = 1) {
+      const extraRot = hamtaSidansExtraRotation(sidNr);
+      const totalRot = ((sida.rotate || 0) + extraRot) % 360;
+      return sida.getViewport({ scale: skala, rotation: totalRot });
+    }
+
+    function beraknaSkalaForSida(sida, sidNr) {
       if (valtZoomLage === 'fit-width') {
-        const basVy = sida.getViewport({ scale: 1 });
+        const basVy = hamtaSidaViewportMedRotation(sida, sidNr, 1);
         const tillgangligBredd = Math.max(300, pdfVisningsyta.clientWidth - 48);
         return tillgangligBredd / basVy.width;
       }
@@ -2089,11 +2287,20 @@
         vaxlaSynlighetKnapp.disabled = false;
         harOsparadeAndringar = false;
 
-        const { sammanslagna, anvandarStatusKarta, anvandarSvarKarta } = await hamtaSammanslagnaKommentarerOchStatusForPdf(pdfNyckel);
+        const {
+          sammanslagna,
+          anvandarStatusKarta,
+          anvandarSvarKarta,
+          globalSidRotationKarta,
+          anvandarSidRotationKarta
+        } = await hamtaSammanslagnaKommentarerOchStatusForPdf(pdfNyckel);
+
         const aktuellAnvandare = hamtaAktuellEpost();
         allaKommentarer = sammanslagna;
         minaStatusUppdateringar = anvandarStatusKarta.get(aktuellAnvandare) || {};
         minaSvar = anvandarSvarKarta.get(aktuellAnvandare) || [];
+        aktuellaSidRotationer = globalSidRotationKarta;
+        minaSidRotationer = anvandarSidRotationKarta.get(aktuellAnvandare) || {};
 
         await ritaAllaSidor();
         uppdateraAktuellPdfBricka();
@@ -2117,6 +2324,8 @@
       const anvandarStatusKarta = new Map();
       const globalaSvarPerForalder = new Map();
       const anvandarSvarKarta = new Map();
+      const globalSidRotationKarta = {};
+      const anvandarSidRotationKarta = new Map();
 
       const jsonNycklar = pdfTillJsonNycklarKarta.get(pdfNyckel) || new Set();
 
@@ -2128,6 +2337,27 @@
         try {
           const data = await hamtaEllerLasJsonData(nyckel, fil);
           const filForfattare = (data.forfattare || data.author || filnamn.slice(prefix.length, -suffix.length)).trim().toLowerCase();
+
+          // Läs in sidrotationer om sådana sparats i filen
+          const råSidRotationer = data.sidRotationer || data.pageRotations;
+          if (råSidRotationer && typeof råSidRotationer === 'object') {
+            const normRotKarta = {};
+            for (const [sidNrKey, rotVal] of Object.entries(råSidRotationer)) {
+              const sidNr = parseInt(sidNrKey, 10);
+              if (!sidNr) continue;
+              const vinkel = normaliseraVinkel(typeof rotVal === 'object' ? (rotVal.vinkel ?? rotVal.angle) : rotVal);
+              const rTid = (typeof rotVal === 'object' ? (rotVal.uppdateradVid || rotVal.updatedAt) : '') || data.senastUppdaterad || data.lastUpdated || '';
+              const rAv = (typeof rotVal === 'object' ? (rotVal.uppdateradAv || rotVal.updatedBy) : '') || filForfattare;
+
+              normRotKarta[sidNr] = { vinkel, uppdateradVid: rTid, uppdateradAv: rAv };
+
+              const befRot = globalSidRotationKarta[sidNr];
+              if (!befRot || rTid >= (befRot.uppdateradVid || '')) {
+                globalSidRotationKarta[sidNr] = { vinkel, uppdateradVid: rTid, uppdateradAv: rAv };
+              }
+            }
+            anvandarSidRotationKarta.set(filForfattare, normRotKarta);
+          }
 
           const råStatusUppdateringar = data.statusUppdateringar || data.statusUpdates;
           if (råStatusUppdateringar && typeof råStatusUppdateringar === 'object') {
@@ -2236,7 +2466,13 @@
       }
 
       sammanslagna.sort((a, b) => a.sida - b.sida || a.yProcent - b.yProcent);
-      return { sammanslagna, anvandarStatusKarta, anvandarSvarKarta };
+      return {
+        sammanslagna,
+        anvandarStatusKarta,
+        anvandarSvarKarta,
+        globalSidRotationKarta,
+        anvandarSidRotationKarta
+      };
     }
 
     function andraKommentarStatus(kommentar, nyStatusKod) {
@@ -2311,7 +2547,7 @@
       ritaAllaMarkeringarOchSidopanel();
     }
 
-    /* --- LAZY RENDERING AV PDF-SIDOR (INTERSECTION OBSERVER) --- */
+    /* --- LAZY RENDERING AV PDF-SIDOR (INTERSECTION OBSERVER + SIDROTATION) --- */
     async function ritaEnskildSidaCanvas(behallare) {
       if (behallare.dataset.ritad === 'true' || behallare.dataset.ritarNu === 'true') return;
       behallare.dataset.ritarNu = 'true';
@@ -2323,8 +2559,8 @@
         const sida = await malPdf.getPage(sidNr);
         if (pdfDokument !== malPdf) return;
 
-        const sidSkala = beraknaSkalaForSida(sida);
-        const visningsomrade = sida.getViewport({ scale: sidSkala });
+        const sidSkala = beraknaSkalaForSida(sida, sidNr);
+        const visningsomrade = hamtaSidaViewportMedRotation(sida, sidNr, sidSkala);
 
         behallare.style.width = `${visningsomrade.width}px`;
         behallare.style.height = `${visningsomrade.height}px`;
@@ -2360,8 +2596,8 @@
       avbrytRutaUtkast();
 
       const forstaSida = await pdfDokument.getPage(1);
-      const forstaSkala = beraknaSkalaForSida(forstaSida);
-      const standardVy = forstaSida.getViewport({ scale: forstaSkala });
+      const forstaSkala = beraknaSkalaForSida(forstaSida, 1);
+      const standardVy = hamtaSidaViewportMedRotation(forstaSida, 1, forstaSkala);
 
       sidObservator = new IntersectionObserver((poster) => {
         for (const post of poster) {
@@ -2378,9 +2614,11 @@
       for (let sidNr = 1; sidNr <= pdfDokument.numPages; sidNr++) {
         let sidBredd = standardVy.width;
         let sidHojd = standardVy.height;
-        if (pdfDokument.numPages <= 30 && sidNr > 1) {
+        const harEgenRot = hamtaSidansExtraRotation(sidNr) !== 0;
+
+        if ((pdfDokument.numPages <= 30 && sidNr > 1) || harEgenRot) {
           const s = await pdfDokument.getPage(sidNr);
-          const v = s.getViewport({ scale: beraknaSkalaForSida(s) });
+          const v = hamtaSidaViewportMedRotation(s, sidNr, beraknaSkalaForSida(s, sidNr));
           sidBredd = v.width;
           sidHojd = v.height;
         }
@@ -2395,6 +2633,18 @@
         laddarDiv.className = 'sid-laddar-etikett';
         laddarDiv.textContent = `Laddar sida ${sidNr}...`;
         behallare.appendChild(laddarDiv);
+
+        // Knapp för att rotera denna enskilda sida 90° medurs
+        const roteraKnapp = document.createElement('button');
+        roteraKnapp.type = 'button';
+        roteraKnapp.className = 'rotera-sida-knapp';
+        uppdateraRoteraKnappUtseende(roteraKnapp, sidNr);
+        roteraKnapp.addEventListener('click', (e) => {
+          e.stopPropagation();
+          roteraEnskildSida90Grader(sidNr);
+        });
+        roteraKnapp.addEventListener('mousedown', (e) => e.stopPropagation());
+        behallare.appendChild(roteraKnapp);
 
         const lager = document.createElement('div');
         lager.className = 'kommentar-lager';
@@ -2495,7 +2745,7 @@
         polyElement,
         startXPx: xPx,
         startYPx: yPx,
-        aktuellaPunkter: null,
+        aktuellaSkarmPunkter: null,
         drarNu: true
       };
 
@@ -2524,15 +2774,15 @@
       const x2 = Number((Math.max(startXPx, slutXPx) / rekt.width).toFixed(4));
       const y2 = Number((Math.max(startYPx, slutYPx) / rekt.height).toFixed(4));
 
-      const punkter = [
+      const skarmPunkter = [
         { xProcent: x1, yProcent: y1 },
         { xProcent: x2, yProcent: y1 },
         { xProcent: x2, yProcent: y2 },
         { xProcent: x1, yProcent: y2 }
       ];
 
-      aktivtRutaUtkast.aktuellaPunkter = punkter;
-      const punkterAttribut = punkter.map(p => `${(p.xProcent * 100).toFixed(2)},${(p.yProcent * 100).toFixed(2)}`).join(' ');
+      aktivtRutaUtkast.aktuellaSkarmPunkter = skarmPunkter;
+      const punkterAttribut = skarmPunkter.map(p => `${(p.xProcent * 100).toFixed(2)},${(p.yProcent * 100).toFixed(2)}`).join(' ');
       polyElement.setAttribute('points', punkterAttribut);
     }
 
@@ -2541,22 +2791,25 @@
       aktivtRutaUtkast.drarNu = false;
       ignoreraNastaLagerKlick = true;
 
-      const { lager, sidNr, aktuellaPunkter } = aktivtRutaUtkast;
-      if (!aktuellaPunkter) {
+      const { lager, sidNr, aktuellaSkarmPunkter } = aktivtRutaUtkast;
+      if (!aktuellaSkarmPunkter) {
         avbrytRutaUtkast();
         return;
       }
 
-      const breddProcent = Math.abs(aktuellaPunkter[1].xProcent - aktuellaPunkter[0].xProcent);
-      const hojdProcent = Math.abs(aktuellaPunkter[2].yProcent - aktuellaPunkter[1].yProcent);
+      const breddProcent = Math.abs(aktuellaSkarmPunkter[1].xProcent - aktuellaSkarmPunkter[0].xProcent);
+      const hojdProcent = Math.abs(aktuellaSkarmPunkter[2].yProcent - aktuellaSkarmPunkter[1].yProcent);
 
       if (breddProcent < 0.008 || hojdProcent < 0.008) {
         avbrytRutaUtkast();
         return;
       }
 
-      const mittpunkt = beraknaPolygonMittpunkt(aktuellaPunkter);
-      oppnaYtaKommentarPopruta(lager, sidNr, mittpunkt, aktuellaPunkter, 'ruta', 'Lägg till ruta', () => {
+      // Omvandla rutans hörn från skärmens (eventuellt roterade) koordinater till 0°-baskoordinater
+      const basPunkter = aktuellaSkarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
+      const basMittpunkt = beraknaPolygonMittpunkt(basPunkter);
+
+      oppnaYtaKommentarPopruta(lager, sidNr, basMittpunkt, basPunkter, 'ruta', 'Lägg till ruta', () => {
         avbrytRutaUtkast();
       });
     }
@@ -2568,22 +2821,24 @@
       aterstallSidopanelTips();
     }
 
-    /* --- REDIGERA / FLYTTA / ÄNDRA STORLEK PÅ MARKERINGAR --- */
+    /* --- REDIGERA / FLYTTA / ÄNDRA STORLEK PÅ MARKERINGAR (MED ROTATIONSSTÖD) --- */
     function startaFlyttaNal(kommentar, lager, nalElement, nerHandelse) {
       if (nerHandelse.button !== 0 || aktivtPolygonUtkast || aktivtRutaUtkast) return;
       nerHandelse.stopPropagation();
       stangAktivPopruta();
 
       const { xProcent, yProcent } = hamtaRelativaKoordinater(lager, nerHandelse);
+      const startSkarmNal = basTillSkarmKoordinat(kommentar.xProcent, kommentar.yProcent, kommentar.sida);
+
       aktivRedigeringsDragning = {
         lage: 'flytta-nal',
         kommentar,
         lager,
         nalElement,
-        startMusX: xProcent,
-        startMusY: yProcent,
-        ursprungX: kommentar.xProcent,
-        ursprungY: kommentar.yProcent,
+        startMusSkarmX: xProcent,
+        startMusSkarmY: yProcent,
+        ursprungSkarmX: startSkarmNal.xProcent,
+        ursprungSkarmY: startSkarmNal.yProcent,
         harFlyttats: false
       };
     }
@@ -2594,6 +2849,8 @@
       stangAktivPopruta();
 
       const { xProcent, yProcent } = hamtaRelativaKoordinater(lager, nerHandelse);
+      const ursprungSkarmPunkter = kommentar.punkter.map(p => basTillSkarmKoordinat(p.xProcent, p.yProcent, kommentar.sida));
+
       aktivRedigeringsDragning = {
         lage: 'flytta-yta',
         kommentar,
@@ -2601,9 +2858,9 @@
         nalElement,
         polyElement,
         handtagElementLista,
-        startMusX: xProcent,
-        startMusY: yProcent,
-        ursprungPunkter: kommentar.punkter.map(p => ({ ...p })),
+        startMusSkarmX: xProcent,
+        startMusSkarmY: yProcent,
+        ursprungSkarmPunkter,
         harFlyttats: false
       };
     }
@@ -2613,20 +2870,19 @@
       nerHandelse.stopPropagation();
       stangAktivPopruta();
 
-      const ursprungPunkter = kommentar.punkter.map(p => ({ ...p }));
+      const ursprungSkarmPunkter = kommentar.punkter.map(p => basTillSkarmKoordinat(p.xProcent, p.yProcent, kommentar.sida));
       const motsattIndex = (hornIndex + 2) % 4;
-      const ankarPunkt = ursprungPunkter[motsattIndex];
+      const ankarSkarmPunkt = ursprungSkarmPunkter[motsattIndex];
 
       aktivRedigeringsDragning = {
         lage: kommentar.typ === 'ruta' ? 'andra-ruta' : 'flytta-horn',
         kommentar,
         hornIndex,
-        ankarPunkt,
+        ankarSkarmPunkt,
         lager,
         nalElement,
         polyElement,
         handtagElementLista,
-        ursprungPunkter,
         harFlyttats: false
       };
     }
@@ -2634,37 +2890,43 @@
     function uppdateraRedigeringsDragning(flyttHandelse) {
       if (!aktivRedigeringsDragning) return;
       const { lage, kommentar, lager, nalElement, polyElement, handtagElementLista } = aktivRedigeringsDragning;
-      const { xProcent, yProcent } = hamtaRelativaKoordinater(lager, flyttHandelse);
+      const { xProcent: musSkarmX, yProcent: musSkarmY } = hamtaRelativaKoordinater(lager, flyttHandelse);
+      const sidNr = kommentar.sida;
 
       if (lage === 'flytta-nal') {
-        const dx = xProcent - aktivRedigeringsDragning.startMusX;
-        const dy = yProcent - aktivRedigeringsDragning.startMusY;
+        const dx = musSkarmX - aktivRedigeringsDragning.startMusSkarmX;
+        const dy = musSkarmY - aktivRedigeringsDragning.startMusSkarmY;
         if (!aktivRedigeringsDragning.harFlyttats && Math.hypot(dx, dy) < 0.003) return;
         aktivRedigeringsDragning.harFlyttats = true;
 
-        kommentar.xProcent = begransa01(aktivRedigeringsDragning.ursprungX + dx);
-        kommentar.yProcent = begransa01(aktivRedigeringsDragning.ursprungY + dy);
-        nalElement.style.left = `${kommentar.xProcent * 100}%`;
-        nalElement.style.top = `${kommentar.yProcent * 100}%`;
+        const nySkarmX = begransa01(aktivRedigeringsDragning.ursprungSkarmX + dx);
+        const nySkarmY = begransa01(aktivRedigeringsDragning.ursprungSkarmY + dy);
+        const nyBas = skarmTillBasKoordinat(nySkarmX, nySkarmY, sidNr);
+
+        kommentar.xProcent = nyBas.xProcent;
+        kommentar.yProcent = nyBas.yProcent;
+        nalElement.style.left = `${nySkarmX * 100}%`;
+        nalElement.style.top = `${nySkarmY * 100}%`;
       } else if (lage === 'flytta-yta') {
-        let dx = xProcent - aktivRedigeringsDragning.startMusX;
-        let dy = yProcent - aktivRedigeringsDragning.startMusY;
+        let dx = musSkarmX - aktivRedigeringsDragning.startMusSkarmX;
+        let dy = musSkarmY - aktivRedigeringsDragning.startMusSkarmY;
         if (!aktivRedigeringsDragning.harFlyttats && Math.hypot(dx, dy) < 0.003) return;
         aktivRedigeringsDragning.harFlyttats = true;
 
-        const xs = aktivRedigeringsDragning.ursprungPunkter.map(p => p.xProcent);
-        const ys = aktivRedigeringsDragning.ursprungPunkter.map(p => p.yProcent);
+        const xs = aktivRedigeringsDragning.ursprungSkarmPunkter.map(p => p.xProcent);
+        const ys = aktivRedigeringsDragning.ursprungSkarmPunkter.map(p => p.yProcent);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
         const minY = Math.min(...ys), maxY = Math.max(...ys);
 
         dx = Math.max(-minX, Math.min(1 - maxX, dx));
         dy = Math.max(-minY, Math.min(1 - maxY, dy));
 
-        kommentar.punkter = aktivRedigeringsDragning.ursprungPunkter.map(p => ({
-          xProcent: Number((p.xProcent + dx).toFixed(4)),
-          yProcent: Number((p.yProcent + dy).toFixed(4))
+        const nyaSkarmPunkter = aktivRedigeringsDragning.ursprungSkarmPunkter.map(p => ({
+          xProcent: begransa01(p.xProcent + dx),
+          yProcent: begransa01(p.yProcent + dy)
         }));
 
+        kommentar.punkter = nyaSkarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
         const mittpunkt = beraknaPolygonMittpunkt(kommentar.punkter);
         kommentar.xProcent = mittpunkt.xProcent;
         kommentar.yProcent = mittpunkt.yProcent;
@@ -2672,19 +2934,20 @@
         uppdateraYtaDOM(kommentar, nalElement, polyElement, handtagElementLista);
       } else if (lage === 'andra-ruta') {
         aktivRedigeringsDragning.harFlyttats = true;
-        const ankare = aktivRedigeringsDragning.ankarPunkt;
-        const x1 = begransa01(Math.min(ankare.xProcent, xProcent));
-        const y1 = begransa01(Math.min(ankare.yProcent, yProcent));
-        const x2 = begransa01(Math.max(ankare.xProcent, xProcent));
-        const y2 = begransa01(Math.max(ankare.yProcent, yProcent));
+        const ankare = aktivRedigeringsDragning.ankarSkarmPunkt;
+        const x1 = begransa01(Math.min(ankare.xProcent, musSkarmX));
+        const y1 = begransa01(Math.min(ankare.yProcent, musSkarmY));
+        const x2 = begransa01(Math.max(ankare.xProcent, musSkarmX));
+        const y2 = begransa01(Math.max(ankare.yProcent, musSkarmY));
 
         if (x2 - x1 >= 0.008 && y2 - y1 >= 0.008) {
-          kommentar.punkter = [
+          const nyaSkarmPunkter = [
             { xProcent: x1, yProcent: y1 },
             { xProcent: x2, yProcent: y1 },
             { xProcent: x2, yProcent: y2 },
             { xProcent: x1, yProcent: y2 }
           ];
+          kommentar.punkter = nyaSkarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
           const mittpunkt = beraknaPolygonMittpunkt(kommentar.punkter);
           kommentar.xProcent = mittpunkt.xProcent;
           kommentar.yProcent = mittpunkt.yProcent;
@@ -2692,10 +2955,7 @@
         }
       } else if (lage === 'flytta-horn') {
         aktivRedigeringsDragning.harFlyttats = true;
-        kommentar.punkter[aktivRedigeringsDragning.hornIndex] = {
-          xProcent: begransa01(xProcent),
-          yProcent: begransa01(yProcent)
-        };
+        kommentar.punkter[aktivRedigeringsDragning.hornIndex] = skarmTillBasKoordinat(musSkarmX, musSkarmY, sidNr);
         const mittpunkt = beraknaPolygonMittpunkt(kommentar.punkter);
         kommentar.xProcent = mittpunkt.xProcent;
         kommentar.yProcent = mittpunkt.yProcent;
@@ -2704,18 +2964,22 @@
     }
 
     function uppdateraYtaDOM(kommentar, nalElement, polyElement, handtagElementLista) {
+      const sidNr = kommentar.sida;
+      const skarmPunkter = kommentar.punkter.map(p => basTillSkarmKoordinat(p.xProcent, p.yProcent, sidNr));
+      const skarmMitt = basTillSkarmKoordinat(kommentar.xProcent, kommentar.yProcent, sidNr);
+
       if (polyElement) {
-        const punkterAttribut = kommentar.punkter
+        const punkterAttribut = skarmPunkter
           .map(p => `${(p.xProcent * 100).toFixed(2)},${(p.yProcent * 100).toFixed(2)}`)
           .join(' ');
         polyElement.setAttribute('points', punkterAttribut);
       }
       if (nalElement) {
-        nalElement.style.left = `${kommentar.xProcent * 100}%`;
-        nalElement.style.top = `${kommentar.yProcent * 100}%`;
+        nalElement.style.left = `${skarmMitt.xProcent * 100}%`;
+        nalElement.style.top = `${skarmMitt.yProcent * 100}%`;
       }
-      if (handtagElementLista && handtagElementLista.length === kommentar.punkter.length) {
-        kommentar.punkter.forEach((pt, idx) => {
+      if (handtagElementLista && handtagElementLista.length === skarmPunkter.length) {
+        skarmPunkter.forEach((pt, idx) => {
           handtagElementLista[idx].style.left = `${pt.xProcent * 100}%`;
           handtagElementLista[idx].style.top = `${pt.yProcent * 100}%`;
         });
@@ -2757,8 +3021,8 @@
 
       const { xProcent, yProcent } = hamtaRelativaKoordinater(lager, klickHandelse);
 
-      if (aktivtPolygonUtkast && aktivtPolygonUtkast.punkter.length > 0) {
-        const senastePunkt = aktivtPolygonUtkast.punkter[aktivtPolygonUtkast.punkter.length - 1];
+      if (aktivtPolygonUtkast && aktivtPolygonUtkast.skarmPunkter.length > 0) {
+        const senastePunkt = aktivtPolygonUtkast.skarmPunkter[aktivtPolygonUtkast.skarmPunkter.length - 1];
         const avstand = Math.hypot(senastePunkt.xProcent - xProcent, senastePunkt.yProcent - yProcent);
         if (avstand < 0.005) return;
       }
@@ -2777,14 +3041,14 @@
           svg,
           polyElement,
           farg,
-          punkter: [],
+          skarmPunkter: [],
           pekarPunkt: null,
           hornElementLista: []
         };
       }
 
-      const punktIndex = aktivtPolygonUtkast.punkter.length;
-      aktivtPolygonUtkast.punkter.push({ xProcent, yProcent });
+      const punktIndex = aktivtPolygonUtkast.skarmPunkter.length;
+      aktivtPolygonUtkast.skarmPunkter.push({ xProcent, yProcent });
 
       const hornElement = document.createElement('div');
       hornElement.className = 'utkast-horn' + (punktIndex === 0 ? ' start-horn' : '');
@@ -2796,7 +3060,7 @@
         hornElement.title = 'Klicka här för att stänga polygonen';
         hornElement.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (aktivtPolygonUtkast && aktivtPolygonUtkast.punkter.length >= 3) {
+          if (aktivtPolygonUtkast && aktivtPolygonUtkast.skarmPunkter.length >= 3) {
             avslutaPolygonUtkast();
           }
         });
@@ -2806,7 +3070,7 @@
       aktivtPolygonUtkast.hornElementLista.push(hornElement);
 
       ritaUtkastPolygonForm();
-      sidopanelTips.textContent = `Polygon: ${aktivtPolygonUtkast.punkter.length} hörn (Enter/Dubbelklick = klar, Esc = avbryt)`;
+      sidopanelTips.textContent = `Polygon: ${aktivtPolygonUtkast.skarmPunkter.length} hörn (Enter/Dubbelklick = klar, Esc = avbryt)`;
     }
 
     function uppdateraPolygonUtkastPekare(lager, flyttHandelse) {
@@ -2818,7 +3082,7 @@
 
     function ritaUtkastPolygonForm() {
       if (!aktivtPolygonUtkast) return;
-      const punkter = [...aktivtPolygonUtkast.punkter];
+      const punkter = [...aktivtPolygonUtkast.skarmPunkter];
       if (aktivtPolygonUtkast.pekarPunkt) {
         punkter.push(aktivtPolygonUtkast.pekarPunkt);
       }
@@ -2847,19 +3111,20 @@
 
     function avslutaPolygonUtkast() {
       if (!aktivtPolygonUtkast) return;
-      if (aktivtPolygonUtkast.punkter.length < 3) {
+      if (aktivtPolygonUtkast.skarmPunkter.length < 3) {
         alert('En polygon kräver minst 3 hörnpunkter.');
         return;
       }
 
-      const { lager, sidNr, punkter } = aktivtPolygonUtkast;
-      const sparadePunkter = punkter.map(p => ({ xProcent: p.xProcent, yProcent: p.yProcent }));
-      const mittpunkt = beraknaPolygonMittpunkt(sparadePunkter);
+      const { lager, sidNr, skarmPunkter } = aktivtPolygonUtkast;
+      // Omvandla polygonens hörnpunkter till sidans oroterade 0°-baskoordinater
+      const basPunkter = skarmPunkter.map(p => skarmTillBasKoordinat(p.xProcent, p.yProcent, sidNr));
+      const basMittpunkt = beraknaPolygonMittpunkt(basPunkter);
 
       aktivtPolygonUtkast.pekarPunkt = null;
       ritaUtkastPolygonForm();
 
-      oppnaYtaKommentarPopruta(lager, sidNr, mittpunkt, sparadePunkter, 'polygon', 'Lägg till polygon', () => {
+      oppnaYtaKommentarPopruta(lager, sidNr, basMittpunkt, basPunkter, 'polygon', 'Lägg till polygon', () => {
         avbrytPolygonUtkast();
       });
     }
@@ -2898,7 +3163,9 @@
 
     function oppnaKommentarPopruta(lager, sidNr, klickHandelse) {
       stangAktivPopruta();
-      const { xPx, yPx, xProcent, yProcent, rekt } = hamtaRelativaKoordinater(lager, klickHandelse);
+      const { xPx, yPx, xProcent: skarmX, yProcent: skarmY, rekt } = hamtaRelativaKoordinater(lager, klickHandelse);
+      const basKoord = skarmTillBasKoordinat(skarmX, skarmY, sidNr);
+
       skapaPoprutaDOM(lager, sidNr, xPx, yPx, rekt, 'Lägg till nål', '', (innehall) => {
         const forfattare = kontrolleraEpostEllerVarna();
         if (!forfattare) return false;
@@ -2907,8 +3174,8 @@
           id: 'k-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
           typ: 'nal',
           sida: sidNr,
-          xProcent,
-          yProcent,
+          xProcent: basKoord.xProcent,
+          yProcent: basKoord.yProcent,
           innehall,
           skapadVid: nu,
           forfattare,
@@ -2921,11 +3188,12 @@
       });
     }
 
-    function oppnaYtaKommentarPopruta(lager, sidNr, mittpunkt, punkter, ytaTyp, knappText, vidStangning) {
+    function oppnaYtaKommentarPopruta(lager, sidNr, basMittpunkt, basPunkter, ytaTyp, knappText, vidStangning) {
       stangAktivPopruta();
       const rekt = lager.getBoundingClientRect();
-      const xPx = mittpunkt.xProcent * rekt.width;
-      const yPx = mittpunkt.yProcent * rekt.height;
+      const skarmMitt = basTillSkarmKoordinat(basMittpunkt.xProcent, basMittpunkt.yProcent, sidNr);
+      const xPx = skarmMitt.xProcent * rekt.width;
+      const yPx = skarmMitt.yProcent * rekt.height;
 
       skapaPoprutaDOM(
         lager,
@@ -2943,9 +3211,9 @@
             id: 'k-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
             typ: ytaTyp,
             sida: sidNr,
-            xProcent: mittpunkt.xProcent,
-            yProcent: mittpunkt.yProcent,
-            punkter,
+            xProcent: basMittpunkt.xProcent,
+            yProcent: basMittpunkt.yProcent,
+            punkter: basPunkter,
             innehall,
             skapadVid: nu,
             forfattare,
@@ -2972,8 +3240,9 @@
 
       stangAktivPopruta();
       const rekt = lager.getBoundingClientRect();
-      const xPx = kommentar.xProcent * rekt.width;
-      const yPx = kommentar.yProcent * rekt.height;
+      const skarmKoord = basTillSkarmKoordinat(kommentar.xProcent, kommentar.yProcent, kommentar.sida);
+      const xPx = skarmKoord.xProcent * rekt.width;
+      const yPx = skarmKoord.yProcent * rekt.height;
 
       skapaPoprutaDOM(
         lager,
@@ -3127,6 +3396,7 @@
         pdfSokvag: aktuellPdfNyckel,
         forfattare: aktuellAnvandare,
         senastUppdaterad: new Date().toISOString(),
+        sidRotationer: minaSidRotationer,
         kommentarer: minaKommentarer,
         statusUppdateringar: minaStatusUppdateringar,
         svar: renaMinaSvar
@@ -3183,6 +3453,7 @@
         pdfSokvag: pdfNyckel,
         forfattare: aktuellAnvandare,
         senastUppdaterad: nu,
+        sidRotationer: {},
         kommentarer: [],
         statusUppdateringar: {},
         svar: []
@@ -3197,6 +3468,7 @@
             pdfSokvag: pdfNyckel,
             forfattare: aktuellAnvandare,
             senastUppdaterad: nu,
+            sidRotationer: { ...(parsed.sidRotationer || parsed.pageRotations || {}) },
             kommentarer: Array.isArray(parsed.kommentarer || parsed.comments) ? [...(parsed.kommentarer || parsed.comments)] : [],
             statusUppdateringar: { ...(parsed.statusUppdateringar || parsed.statusUpdates || {}) },
             svar: Array.isArray(parsed.svar || parsed.replies) ? [...(parsed.svar || parsed.replies)] : []
@@ -4117,7 +4389,7 @@
       }
     }
 
-    /* --- SIDOPANEL OCH MARKERINGAR PÅ PDF --- */
+    /* --- SIDOPANEL OCH MARKERINGAR PÅ PDF (MED KOORDINATOMRÄKNING FÖR ROTATION) --- */
     let kommentarGranssnittsElement = new Map();
 
     function uppdateraForfattarFilterAlternativ() {
@@ -4196,8 +4468,9 @@
         const statusInfo = hamtaStatusInfo(kommentar.status);
         const arHanterad = statusInfo.arHanterad;
         const statusFarg = statusInfo.farg;
+        const sidNr = kommentar.sida;
 
-        const lager = document.querySelector(`.kommentar-lager[data-sid-nummer="${kommentar.sida}"]`);
+        const lager = document.querySelector(`.kommentar-lager[data-sid-nummer="${sidNr}"]`);
         const nal = document.createElement('div');
         let polyElement = null;
         const handtagElementLista = [];
@@ -4206,7 +4479,10 @@
           Array.isArray(kommentar.punkter) && kommentar.punkter.length >= 3;
 
         if (lager && kommentarerSynliga) {
+          const skarmNalKoord = basTillSkarmKoordinat(kommentar.xProcent, kommentar.yProcent, sidNr);
+
           if (arYta) {
+            const skarmPunkter = kommentar.punkter.map(p => basTillSkarmKoordinat(p.xProcent, p.yProcent, sidNr));
             const svg = lager.querySelector('.markerings-svg');
             if (svg) {
               polyElement = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -4216,7 +4492,7 @@
               );
               polyElement.setAttribute('stroke', statusFarg);
               polyElement.setAttribute('fill', statusFarg);
-              const punkterAttribut = kommentar.punkter
+              const punkterAttribut = skarmPunkter
                 .map(p => `${(p.xProcent * 100).toFixed(2)},${(p.yProcent * 100).toFixed(2)}`)
                 .join(' ');
               polyElement.setAttribute('points', punkterAttribut);
@@ -4224,7 +4500,7 @@
             }
 
             if (arEgen) {
-              kommentar.punkter.forEach((pt, hIdx) => {
+              skarmPunkter.forEach((pt, hIdx) => {
                 const handtag = document.createElement('div');
                 handtag.className = 'redigera-horn-handtag';
                 handtag.style.left = `${pt.xProcent * 100}%`;
@@ -4245,8 +4521,8 @@
             (arYta ? ' polygon-bricka' : '') +
             (arEgen ? ' egen-nal' : '') +
             (arHanterad ? ' hanterad' : '');
-          nal.style.left = `${kommentar.xProcent * 100}%`;
-          nal.style.top = `${kommentar.yProcent * 100}%`;
+          nal.style.left = `${skarmNalKoord.xProcent * 100}%`;
+          nal.style.top = `${skarmNalKoord.yProcent * 100}%`;
           nal.style.backgroundColor = statusFarg;
           nal.title = arEgen
             ? `[${statusInfo.kod}] ${kommentar.forfattare}: ${kommentar.innehall} (Dra för att flytta, dubbelklicka för att redigera)`
@@ -4565,10 +4841,15 @@
       stangAktivPopruta();
 
       if (aktuellPdfNyckel) {
-        const { anvandarStatusKarta, anvandarSvarKarta } = await hamtaSammanslagnaKommentarerOchStatusForPdf(aktuellPdfNyckel);
+        const {
+          anvandarStatusKarta,
+          anvandarSvarKarta,
+          anvandarSidRotationKarta
+        } = await hamtaSammanslagnaKommentarerOchStatusForPdf(aktuellPdfNyckel);
         const aktuellAnvandare = hamtaAktuellEpost();
         minaStatusUppdateringar = anvandarStatusKarta.get(aktuellAnvandare) || {};
         minaSvar = anvandarSvarKarta.get(aktuellAnvandare) || [];
+        minaSidRotationer = anvandarSidRotationKarta.get(aktuellAnvandare) || {};
       }
       ritaAllaMarkeringarOchSidopanel();
       if (tabellVyModal.classList.contains('oppen')) {
