@@ -158,11 +158,6 @@
       background: rgba(255,255,255,0.08);
     }
 
-    .status-text {
-      font-size: 0.8rem;
-      color: #94a3b8;
-    }
-
     main {
       display: flex;
       flex: 1;
@@ -715,6 +710,92 @@
       background: #fff;
       color: var(--text);
     }
+
+    /* Rullgardinsmeny för att visa/dölja kolumner */
+    .kolumn-meny-behallare {
+      position: relative;
+      display: inline-block;
+    }
+    .kolumn-valjare-knapp {
+      padding: 0.42rem 0.75rem;
+      border: 1px solid var(--kantlinje);
+      border-radius: 4px;
+      background: #fff;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .kolumn-valjare-knapp:hover {
+      background: #e2e8f0;
+    }
+    .kolumn-valjare-meny {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: #fff;
+      border: 1px solid var(--kantlinje);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      padding: 0.65rem;
+      width: 250px;
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .kolumn-valjare-meny.oppen {
+      display: flex;
+    }
+    .kolumn-meny-rubrik {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-dold);
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid #e2e8f0;
+      margin-bottom: 0.15rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kolumn-meny-lank {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 0.72rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .kolumn-meny-lank:hover {
+      text-decoration: underline;
+    }
+    .kolumn-kryssruta-rad {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+      padding: 0.15rem 0.2rem;
+      border-radius: 3px;
+      user-select: none;
+    }
+    .kolumn-kryssruta-rad:hover {
+      background: #f1f5f9;
+    }
+    .kolumn-kryssruta-rad input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .dold-kolumn {
+      display: none !important;
+    }
+
     .tabell-omslag {
       flex: 1;
       overflow: auto;
@@ -906,7 +987,7 @@
     </div>
 
     <div class="verktygsgrupp">
-      <div class="synk-bricka" title="Snabbsynkar aktivt dokument automatiskt (pausar när fliken ligger i bakgrunden)">
+      <div id="synk-bricka" class="synk-bricka" title="Snabbsynkar aktivt dokument automatiskt (pausar när fliken ligger i bakgrunden)">
         <span id="synk-prick" class="synk-prick"></span>
         <span>Autosynk:</span>
         <select id="synk-intervall-valjare" disabled style="padding: 0.15rem 0.3rem; font-size: 0.78rem;">
@@ -923,7 +1004,6 @@
       <button id="vaxla-synlighet-knapp" class="knapp sekundar" disabled title="Visa eller dölj alla markeringar på sidan">
         👁️ Dölj kommentarer
       </button>
-      <span id="status-text" class="status-text">Redo</span>
       <label>
         Zoom:
         <select id="zoom-valjare" disabled>
@@ -1037,31 +1117,49 @@
             <option value="Annat forum eller skede">🔵 Annat forum eller skede</option>
           </optgroup>
         </select>
+
+        <!-- Knapp & meny för att välja synliga kolumner -->
+        <div class="kolumn-meny-behallare" id="kolumn-meny-behallare">
+          <button type="button" id="kolumn-valjare-knapp" class="kolumn-valjare-knapp" title="Välj vilka kolumner som ska visas i tabellen">
+            ⚙️ Kolumner
+          </button>
+          <div id="kolumn-valjare-meny" class="kolumn-valjare-meny">
+            <div class="kolumn-meny-rubrik">
+              <span>Synliga kolumner</span>
+              <div>
+                <button type="button" id="kolumn-visa-alla-knapp" class="kolumn-meny-lank">Visa alla</button>
+                <span style="color:#cbd5e1;">|</span>
+                <button type="button" id="kolumn-standard-knapp" class="kolumn-meny-lank">Standardvy</button>
+              </div>
+            </div>
+            <div id="kolumn-kryssrutor-lista"></div>
+          </div>
+        </div>
       </div>
 
       <div class="tabell-omslag">
         <table class="kommentar-tabell">
           <thead id="tabell-vy-huvud-rad">
             <tr>
-              <th>Åtgärd</th>
-              <th class="sorterbar" data-sort-kolumn="globaltNr">Globalt nr <span class="sorterings-pil">▲</span></th>
-              <th class="sorterbar" data-sort-kolumn="lokaltNr">Nr (i PDF) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="status">BEAst-status <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="beskrivning">Statusbeskrivning <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="farg">Färg (BEAst) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="andradAv">Status ändrad av <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="typ">Typ <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="mapp">Mapp <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="filnamn">PDF-dokument <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="sokvag">Fullständig sökväg <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="sida">Sida <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="forfattare">Författare (E-post) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="kommentar">Kommentar <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="svar">Svar / Tråd <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="skapadVid">Skapad datum <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="xProcent">X (%) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-sort-kolumn="yProcent">Y (%) <span class="sorterings-pil">↕</span></th>
-              <th>Ytpunkter</th>
+              <th data-kolumn-id="atgard">Åtgärd</th>
+              <th class="sorterbar" data-kolumn-id="globaltNr" data-sort-kolumn="globaltNr">Globalt nr <span class="sorterings-pil">▲</span></th>
+              <th class="sorterbar" data-kolumn-id="lokaltNr" data-sort-kolumn="lokaltNr">Nr (i PDF) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="status" data-sort-kolumn="status">BEAst-status <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="beskrivning" data-sort-kolumn="beskrivning">Statusbeskrivning <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="farg" data-sort-kolumn="farg">Färg (BEAst) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="andradAv" data-sort-kolumn="andradAv">Status ändrad av <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="typ" data-sort-kolumn="typ">Typ <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="mapp" data-sort-kolumn="mapp">Mapp <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="filnamn" data-sort-kolumn="filnamn">PDF-dokument <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="sokvag" data-sort-kolumn="sokvag">Fullständig sökväg <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="sida" data-sort-kolumn="sida">Sida <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="forfattare" data-sort-kolumn="forfattare">Författare (E-post) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="kommentar" data-sort-kolumn="kommentar">Kommentar <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="svar" data-sort-kolumn="svar">Svar / Tråd <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="skapadVid" data-sort-kolumn="skapadVid">Skapad datum <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="xProcent" data-sort-kolumn="xProcent">X (%) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="yProcent" data-sort-kolumn="yProcent">Y (%) <span class="sorterings-pil">↕</span></th>
+              <th data-kolumn-id="ytpunkter">Ytpunkter</th>
             </tr>
           </thead>
           <tbody id="tabell-vy-kropp"></tbody>
@@ -1122,6 +1220,73 @@
     };
 
     const STANDARD_STATUS = 'Ny kommentar';
+
+    /* --- KOLUMNKONFIGURATION FÖR TABELLVYN (Tekniska kolumner dolda som standard) --- */
+    const TABELL_KOLUMNER_DEFINITION = [
+      { id: 'atgard', etikett: 'Åtgärd (Öppna)', standardSynlig: true },
+      { id: 'globaltNr', etikett: 'Globalt nr', standardSynlig: false },
+      { id: 'lokaltNr', etikett: 'Nr (i PDF)', standardSynlig: true },
+      { id: 'status', etikett: 'BEAst-status', standardSynlig: true },
+      { id: 'beskrivning', etikett: 'Statusbeskrivning', standardSynlig: false },
+      { id: 'farg', etikett: 'Färg (BEAst)', standardSynlig: false },
+      { id: 'andradAv', etikett: 'Status ändrad av', standardSynlig: true },
+      { id: 'typ', etikett: 'Typ (Nål/Ruta/Yta)', standardSynlig: true },
+      { id: 'mapp', etikett: 'Mapp', standardSynlig: true },
+      { id: 'filnamn', etikett: 'PDF-dokument', standardSynlig: true },
+      { id: 'sokvag', etikett: 'Fullständig sökväg', standardSynlig: false },
+      { id: 'sida', etikett: 'Sida', standardSynlig: true },
+      { id: 'forfattare', etikett: 'Författare (E-post)', standardSynlig: true },
+      { id: 'kommentar', etikett: 'Kommentar', standardSynlig: true },
+      { id: 'svar', etikett: 'Svar / Tråd', standardSynlig: true },
+      { id: 'skapadVid', etikett: 'Skapad datum', standardSynlig: true },
+      { id: 'xProcent', etikett: 'X (%)', standardSynlig: false },
+      { id: 'yProcent', etikett: 'Y (%)', standardSynlig: false },
+      { id: 'ytpunkter', etikett: 'Ytpunkter', standardSynlig: false }
+    ];
+
+    let synligaTabellKolumner = {};
+
+    function laddaSparadeKolumnVal() {
+      try {
+        const sparat = localStorage.getItem('granskning_tabell_kolumner');
+        if (sparat) {
+          const tolkad = JSON.parse(sparat);
+          for (const kol of TABELL_KOLUMNER_DEFINITION) {
+            synligaTabellKolumner[kol.id] = typeof tolkad[kol.id] === 'boolean' ? tolkad[kol.id] : kol.standardSynlig;
+          }
+          return;
+        }
+      } catch (_) {}
+      aterstallStandardKolumner(false);
+    }
+
+    function sparaKolumnVal() {
+      try {
+        localStorage.setItem('granskning_tabell_kolumner', JSON.stringify(synligaTabellKolumner));
+      } catch (_) {}
+    }
+
+    function aterstallStandardKolumner(sparaOchUppdatera = true) {
+      for (const kol of TABELL_KOLUMNER_DEFINITION) {
+        synligaTabellKolumner[kol.id] = kol.standardSynlig;
+      }
+      if (sparaOchUppdatera) {
+        sparaKolumnVal();
+        byggKolumnValjareMenyDOM();
+        uppdateraTabellKolumnSynlighetDOM();
+      }
+    }
+
+    function visaAllaTabellKolumner() {
+      for (const kol of TABELL_KOLUMNER_DEFINITION) {
+        synligaTabellKolumner[kol.id] = true;
+      }
+      sparaKolumnVal();
+      byggKolumnValjareMenyDOM();
+      uppdateraTabellKolumnSynlighetDOM();
+    }
+
+    laddaSparadeKolumnVal();
 
     function normaliseraBeastStatus(råStatus, gammalKlarFlagga) {
       if (råStatus && BEAST_STATUSAR[råStatus]) {
@@ -1198,6 +1363,7 @@
     const epostFalt = document.getElementById('epost-falt');
     const liveMappKnapp = document.getElementById('live-mapp-knapp');
     const pdfValjare = document.getElementById('pdf-valjare');
+    const synkBricka = document.getElementById('synk-bricka');
     const synkIntervallValjare = document.getElementById('synk-intervall-valjare');
     const synkaNuKnapp = document.getElementById('synka-nu-knapp');
     const synkPrick = document.getElementById('synk-prick');
@@ -1206,7 +1372,6 @@
     const exporteraAllaKnapp = document.getElementById('exportera-alla-knapp');
     const tabellVyKnapp = document.getElementById('tabell-vy-knapp');
     const vaxlaSynlighetKnapp = document.getElementById('vaxla-synlighet-knapp');
-    const statusText = document.getElementById('status-text');
     const pdfVisningsyta = document.getElementById('pdf-visningsyta');
     const kommentarLista = document.getElementById('kommentar-lista');
     const kommentarAntal = document.getElementById('kommentar-antal');
@@ -1218,7 +1383,7 @@
     const verktygRutaKnapp = document.getElementById('verktyg-ruta-knapp');
     const verktygPolygonKnapp = document.getElementById('verktyg-polygon-knapp');
 
-    // DOM-element för tabellvy
+    // DOM-element för tabellvy & kolumnväljare
     const tabellVyModal = document.getElementById('tabell-vy-modal');
     const tabellVyAntal = document.getElementById('tabell-vy-antal');
     const tabellExporteraKnapp = document.getElementById('tabell-exportera-knapp');
@@ -1229,6 +1394,12 @@
     const tabellFilterStatus = document.getElementById('tabell-filter-status');
     const tabellVyHuvudRad = document.getElementById('tabell-vy-huvud-rad');
     const tabellVyKropp = document.getElementById('tabell-vy-kropp');
+    const kolumnMenyBehallare = document.getElementById('kolumn-meny-behallare');
+    const kolumnValjareKnapp = document.getElementById('kolumn-valjare-knapp');
+    const kolumnValjareMeny = document.getElementById('kolumn-valjare-meny');
+    const kolumnVisaAllaKnapp = document.getElementById('kolumn-visa-alla-knapp');
+    const kolumnStandardKnapp = document.getElementById('kolumn-standard-knapp');
+    const kolumnKryssrutorLista = document.getElementById('kolumn-kryssrutor-lista');
 
     const sparadEpost = localStorage.getItem('granskning_epost');
     if (sparadEpost) {
@@ -1270,20 +1441,23 @@
 
     uppdateraEpostFaltUtseende();
 
+    function aterstallSidopanelTips() {
+      if (aktuelltVerktyg === 'nal') {
+        sidopanelTips.textContent = 'Klicka på sidan för att sätta nål';
+      } else if (aktuelltVerktyg === 'ruta') {
+        sidopanelTips.textContent = 'Dra för att rita ruta (Skift = kvadrat)';
+      } else {
+        sidopanelTips.textContent = 'Klicka hörn • Enter/Dubbelklick avslutar';
+      }
+    }
+
     function valjVerktygslage(lage) {
       aktuelltVerktyg = lage;
       verktygNalKnapp.classList.toggle('aktiv', lage === 'nal');
       verktygRutaKnapp.classList.toggle('aktiv', lage === 'ruta');
       verktygPolygonKnapp.classList.toggle('aktiv', lage === 'polygon');
 
-      if (lage === 'nal') {
-        sidopanelTips.textContent = 'Klicka på sidan för att sätta nål';
-      } else if (lage === 'ruta') {
-        sidopanelTips.textContent = 'Dra för att rita ruta (Skift = kvadrat)';
-      } else {
-        sidopanelTips.textContent = 'Klicka hörn • Enter/Dubbelklick avslutar';
-      }
-
+      aterstallSidopanelTips();
       avbrytPolygonUtkast();
       avbrytRutaUtkast();
       stangAktivPopruta();
@@ -1639,7 +1813,7 @@
       ritaAllaMarkeringarOchSidopanel();
       uppdateraAktuellPdfBricka();
       const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-      statusText.textContent = `Synkad ${tidsStämpel} — ${aktuellPdfNyckel}`;
+      synkBricka.title = `Senast synkad ${tidsStämpel}`;
     }
 
     async function uppdateraKommentarerEfterFullSynk(andradeJsonNycklar) {
@@ -1676,7 +1850,6 @@
 
       await beraknaAllaPdfSammanfattningar(berordaPdfNycklar.length > 0 ? berordaPdfNycklar : null);
 
-      // Uppdatera tabellvyn om den är öppen och användaren inte skriver i ett tabellfält just nu
       if (tabellVyModal.classList.contains('oppen') && !aktivTabellRedigeraNyckel && !aktivTabellSvaraNyckel) {
         await laddaOchRitaTabellVy();
       }
@@ -1787,7 +1960,7 @@
         await laddaPdfFranMinne(pdfNycklar[0]);
         await beraknaAllaPdfSammanfattningar();
       } else {
-        statusText.textContent = 'Inga PDF-filer hittades i mappen';
+        alert('Inga PDF-filer hittades i den valda mappen.');
       }
     }
 
@@ -1802,7 +1975,6 @@
 
     async function laddaPdfFranMinne(pdfNyckel) {
       try {
-        statusText.textContent = `Laddar ${pdfNyckel}...`;
         const pdfFil = inlastaFilerKarta.get(pdfNyckel);
         if (!pdfFil) return;
 
@@ -1835,10 +2007,9 @@
 
         await ritaAllaSidor();
         uppdateraAktuellPdfBricka();
-        statusText.textContent = `${pdfNyckel} (${pdfDokument.numPages} sidor)`;
       } catch (fel) {
         console.error('Misslyckades att visa PDF:', fel);
-        statusText.textContent = 'Fel vid inläsning av PDF (se konsolen)';
+        alert('Fel vid inläsning av PDF (se konsolen).');
       }
     }
 
@@ -2232,7 +2403,7 @@
         drarNu: true
       };
 
-      statusText.textContent = 'Ritar ruta... (Håll in Skift för kvadrat, Esc för att avbryta)';
+      sidopanelTips.textContent = 'Ritar ruta... (Skift = kvadrat, Esc = avbryt)';
     }
 
     function uppdateraRutaUtkast(flyttHandelse) {
@@ -2298,9 +2469,7 @@
       if (!aktivtRutaUtkast) return;
       aktivtRutaUtkast.polyElement.remove();
       aktivtRutaUtkast = null;
-      if (pdfDokument) {
-        statusText.textContent = `${aktuellPdfNyckel} (${pdfDokument.numPages} sidor)`;
-      }
+      aterstallSidopanelTips();
     }
 
     /* --- REDIGERA / FLYTTA / ÄNDRA STORLEK PÅ MARKERINGAR --- */
@@ -2541,7 +2710,7 @@
       aktivtPolygonUtkast.hornElementLista.push(hornElement);
 
       ritaUtkastPolygonForm();
-      statusText.textContent = `Polygon: ${aktivtPolygonUtkast.punkter.length} hörn — klicka på startpunkten, dubbelklicka eller tryck Enter för att slutföra (Esc för att avbryta)`;
+      sidopanelTips.textContent = `Polygon: ${aktivtPolygonUtkast.punkter.length} hörn (Enter/Dubbelklick = klar, Esc = avbryt)`;
     }
 
     function uppdateraPolygonUtkastPekare(lager, flyttHandelse) {
@@ -2566,9 +2735,7 @@
       aktivtPolygonUtkast.polyElement.remove();
       aktivtPolygonUtkast.hornElementLista.forEach(el => el.remove());
       aktivtPolygonUtkast = null;
-      if (pdfDokument) {
-        statusText.textContent = `${aktuellPdfNyckel} (${pdfDokument.numPages} sidor)`;
-      }
+      aterstallSidopanelTips();
     }
 
     function beraknaPolygonMittpunkt(punkter) {
@@ -2603,6 +2770,10 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (kolumnValjareMeny.classList.contains('oppen')) {
+          kolumnValjareMeny.classList.remove('oppen');
+          return;
+        }
         if (tabellVyModal.classList.contains('oppen')) {
           if (aktivTabellRedigeraNyckel || aktivTabellSvaraNyckel) {
             aktivTabellRedigeraNyckel = null;
@@ -2813,7 +2984,7 @@
 
       const aktuellAnvandare = hamtaAktuellEpost();
       if (!arGiltigEpost(aktuellAnvandare)) {
-        statusText.textContent = 'Autosparande pausat: Ange en giltig e-postadress!';
+        synkBricka.title = 'Autosparande pausat: Ange en giltig e-postadress!';
         return;
       }
 
@@ -2888,10 +3059,10 @@
 
         harOsparadeAndringar = false;
         const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-        statusText.textContent = `Autosparad ${tidsStämpel} (${sidecarNyckel})`;
+        synkBricka.title = `Autosparad ${tidsStämpel}`;
       } catch (fel) {
         console.error('Direktsparning till mapp misslyckades:', fel);
-        statusText.textContent = 'Autosparande misslyckades (kontrollera mapprättigheter)';
+        synkBricka.title = 'Autosparande misslyckades (kontrollera mapprättigheter)';
       } finally {
         spararTillDisk = false;
         if (vantandeSparaEfterAktuell) {
@@ -2901,7 +3072,6 @@
       }
     }
 
-    // Generell funktion för att uppdatera valfri PDF-fils sidecar direkt från tabellvyn (för status, svar, redigering och radering)
     async function uppdateraSidecarForValfriPdf(pdfNyckel, muteraCallback) {
       const aktuellAnvandare = kontrolleraEpostEllerVarna();
       if (!aktuellAnvandare || !mappHandtag) return false;
@@ -2960,7 +3130,7 @@
 
         await beraknaAllaPdfSammanfattningar([pdfNyckel]);
         const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-        statusText.textContent = `Autosparad ${tidsStämpel} (${sidecarNyckel})`;
+        synkBricka.title = `Autosparad ${tidsStämpel}`;
         return true;
       } catch (fel) {
         console.error('Misslyckades att spara ändring från tabellvy:', fel);
@@ -3032,9 +3202,6 @@
     async function exporteraAllaPdfTillCsv() {
       if (inlastaPdfNycklar.length === 0) return;
 
-      const foregaendeStatus = statusText.textContent;
-      statusText.textContent = 'Exporterar alla PDF-kommentarer...';
-
       const rubriker = ['Globalt nr', 'Nr (i PDF)', 'BEAst-status', 'Statusbeskrivning', 'Färg (BEAst)', 'Status ändrad av', 'Typ', 'Mapp', 'PDF-dokument', 'Fullständig sökväg', 'Sida', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'X (%)', 'Y (%)', 'Ytpunkter'];
       const rader = [];
       let globaltIndex = 1;
@@ -3074,8 +3241,6 @@
         });
       }
 
-      statusText.textContent = foregaendeStatus;
-
       if (rader.length === 0) {
         alert('Inga kommentarer hittades i någon av de inlästa PDF-filerna.');
         return;
@@ -3087,6 +3252,64 @@
 
     exporteraAllaKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
     tabellExporteraKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
+
+    /* --- KOLUMNVÄLJARE FÖR TABELLVYN --- */
+    function byggKolumnValjareMenyDOM() {
+      kolumnKryssrutorLista.innerHTML = '';
+      for (const kol of TABELL_KOLUMNER_DEFINITION) {
+        const rad = document.createElement('label');
+        rad.className = 'kolumn-kryssruta-rad';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = Boolean(synligaTabellKolumner[kol.id]);
+        cb.addEventListener('change', () => {
+          synligaTabellKolumner[kol.id] = cb.checked;
+          sparaKolumnVal();
+          uppdateraTabellKolumnSynlighetDOM();
+        });
+
+        const span = document.createElement('span');
+        span.textContent = kol.etikett;
+
+        rad.appendChild(cb);
+        rad.appendChild(span);
+        kolumnKryssrutorLista.appendChild(rad);
+      }
+    }
+
+    function uppdateraTabellKolumnSynlighetDOM() {
+      let antalSynliga = 0;
+      for (const kol of TABELL_KOLUMNER_DEFINITION) {
+        const synlig = Boolean(synligaTabellKolumner[kol.id]);
+        if (synlig) antalSynliga++;
+        document.querySelectorAll(`[data-kolumn-id="${kol.id}"]`).forEach(el => {
+          el.classList.toggle('dold-kolumn', !synlig);
+        });
+      }
+      const doldaAntal = TABELL_KOLUMNER_DEFINITION.length - antalSynliga;
+      kolumnValjareKnapp.textContent = doldaAntal > 0
+        ? `⚙️ Kolumner (${antalSynliga}/${TABELL_KOLUMNER_DEFINITION.length})`
+        : '⚙️ Kolumner (Alla)';
+    }
+
+    kolumnValjareKnapp.addEventListener('click', (e) => {
+      e.stopPropagation();
+      kolumnValjareMeny.classList.toggle('oppen');
+    });
+
+    kolumnValjareMeny.addEventListener('click', (e) => e.stopPropagation());
+
+    document.addEventListener('click', (e) => {
+      if (!kolumnMenyBehallare.contains(e.target)) {
+        kolumnValjareMeny.classList.remove('oppen');
+      }
+    });
+
+    kolumnVisaAllaKnapp.addEventListener('click', () => visaAllaTabellKolumner());
+    kolumnStandardKnapp.addEventListener('click', () => aterstallStandardKolumner(true));
+
+    byggKolumnValjareMenyDOM();
 
     /* --- LOGIK FÖR GLOBAL TABELLVY (SORTERING, DIREKTREDIGERING & SVARSTRÅDAR) --- */
     tabellVyKnapp.addEventListener('click', async () => {
@@ -3102,6 +3325,7 @@
     function stangTabellVy() {
       aktivTabellRedigeraNyckel = null;
       aktivTabellSvaraNyckel = null;
+      kolumnValjareMeny.classList.remove('oppen');
       tabellVyModal.classList.remove('oppen');
     }
 
@@ -3110,7 +3334,6 @@
       if (e.target === tabellVyModal) stangTabellVy();
     });
 
-    // Klickbara kolumnrubriker för sortering
     tabellVyHuvudRad.querySelectorAll('th.sorterbar').forEach(th => {
       th.addEventListener('click', () => {
         const kolumn = th.dataset.sortKolumn;
@@ -3225,7 +3448,6 @@
       }
     }
 
-    // Åtgärder direkt inifrån tabellvyn (fungerar både för öppen PDF och andra PDF-filer i mappen)
     async function tabellAndraKommentarText(post, nyText) {
       const rensad = nyText.trim();
       if (!rensad) return;
@@ -3325,6 +3547,15 @@
       await laddaOchRitaTabellVy();
     }
 
+    function skapaTabellCell(kolumnId) {
+      const td = document.createElement('td');
+      td.dataset.kolumnId = kolumnId;
+      if (!synligaTabellKolumner[kolumnId]) {
+        td.classList.add('dold-kolumn');
+      }
+      return td;
+    }
+
     function ritaTabellVyRader() {
       tabellVyKropp.innerHTML = '';
 
@@ -3364,7 +3595,6 @@
         return true;
       });
 
-      // Sortera rader efter vald kolumn och riktning
       filtrerade.sort((a, b) => {
         const valA = hamtaSorteringsVardeForPost(a, tabellSorteringKolumn);
         const valB = hamtaSorteringsVardeForPost(b, tabellSorteringKolumn);
@@ -3392,6 +3622,7 @@
         tomCell.textContent = 'Inga kommentarer matchar de valda filtren.';
         tomRad.appendChild(tomCell);
         tabellVyKropp.appendChild(tomRad);
+        uppdateraTabellKolumnSynlighetDOM();
         return;
       }
 
@@ -3410,7 +3641,7 @@
         tr.title = 'Klicka på raden för att öppna dokumentet och gå till denna kommentar';
 
         // 1. Åtgärdsknapp (Öppna)
-        const tdAtgard = document.createElement('td');
+        const tdAtgard = skapaTabellCell('atgard');
         const hoppaKnapp = document.createElement('button');
         hoppaKnapp.type = 'button';
         hoppaKnapp.className = 'hoppa-lank-knapp';
@@ -3423,21 +3654,22 @@
         tr.appendChild(tdAtgard);
 
         // 2. Globalt nr
-        const tdGlobaltNr = document.createElement('td');
+        const tdGlobaltNr = skapaTabellCell('globaltNr');
         tdGlobaltNr.textContent = post.globaltNr;
         tr.appendChild(tdGlobaltNr);
 
         // 3. Nr (i PDF)
-        const tdLokaltNr = document.createElement('td');
+        const tdLokaltNr = skapaTabellCell('lokaltNr');
         tdLokaltNr.style.fontWeight = '700';
         tdLokaltNr.textContent = `#${post.lokaltNr}`;
         tr.appendChild(tdLokaltNr);
 
         // 4. BEAst-status (interaktiv väljare)
-        const tdStatus = document.createElement('td');
+        const tdStatus = skapaTabellCell('status');
         const statusSelect = document.createElement('select');
         statusSelect.className = 'status-valjare-kort';
         statusSelect.style.backgroundColor = stInfo.farg;
+        statusSelect.title = `${stInfo.kod}: ${stInfo.beskrivning}`;
         for (const stObj of Object.values(BEAST_STATUSAR)) {
           const opt = document.createElement('option');
           opt.value = stObj.kod;
@@ -3479,59 +3711,59 @@
         tr.appendChild(tdStatus);
 
         // 5. Statusbeskrivning
-        const tdBeskrivning = document.createElement('td');
-        tdBeskrivning.className = 'cell-beskrivning';
+        const tdBeskrivning = skapaTabellCell('beskrivning');
+        tdBeskrivning.className += ' cell-beskrivning';
         tdBeskrivning.textContent = stInfo.beskrivning;
         tr.appendChild(tdBeskrivning);
 
         // 6. Färg (BEAst)
-        const tdFarg = document.createElement('td');
+        const tdFarg = skapaTabellCell('farg');
         tdFarg.style.whiteSpace = 'nowrap';
         tdFarg.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${stInfo.farg};margin-right:5px;vertical-align:middle;"></span>${stInfo.fargNamn}`;
         tr.appendChild(tdFarg);
 
         // 7. Status ändrad av
-        const tdAndradAv = document.createElement('td');
+        const tdAndradAv = skapaTabellCell('andradAv');
         tdAndradAv.textContent = k.statusUppdateradAv || '';
         tr.appendChild(tdAndradAv);
 
         // 8. Typ
-        const tdTyp = document.createElement('td');
+        const tdTyp = skapaTabellCell('typ');
         tdTyp.style.whiteSpace = 'nowrap';
         tdTyp.textContent = typEtikett;
         tr.appendChild(tdTyp);
 
         // 9. Mapp
-        const tdMapp = document.createElement('td');
+        const tdMapp = skapaTabellCell('mapp');
         tdMapp.textContent = post.mapp;
         tr.appendChild(tdMapp);
 
         // 10. PDF-dokument
-        const tdFilnamn = document.createElement('td');
+        const tdFilnamn = skapaTabellCell('filnamn');
         tdFilnamn.style.fontWeight = '600';
         tdFilnamn.textContent = post.filnamn;
         tr.appendChild(tdFilnamn);
 
         // 11. Fullständig sökväg
-        const tdSokvag = document.createElement('td');
+        const tdSokvag = skapaTabellCell('sokvag');
         tdSokvag.style.color = '#64748b';
         tdSokvag.textContent = post.pdfNyckel;
         tr.appendChild(tdSokvag);
 
         // 12. Sida
-        const tdSida = document.createElement('td');
+        const tdSida = skapaTabellCell('sida');
         tdSida.textContent = k.sida;
         tr.appendChild(tdSida);
 
         // 13. Författare (E-post)
-        const tdForfattare = document.createElement('td');
+        const tdForfattare = skapaTabellCell('forfattare');
         tdForfattare.style.fontWeight = '600';
         tdForfattare.textContent = k.forfattare;
         tr.appendChild(tdForfattare);
 
-        // 14. Kommentar (med direktredigering & radering för egna kommentarer)
-        const tdKommentar = document.createElement('td');
-        tdKommentar.className = 'cell-kommentar';
+        // 14. Kommentar
+        const tdKommentar = skapaTabellCell('kommentar');
+        tdKommentar.classList.add('cell-kommentar');
 
         if (aktivTabellRedigeraNyckel === radUnikNyckel) {
           const redigeraBox = document.createElement('div');
@@ -3606,9 +3838,9 @@
         }
         tr.appendChild(tdKommentar);
 
-        // 15. Svar / Tråd (med möjlighet att svara och radera egna svar direkt i tabellen)
-        const tdSvar = document.createElement('td');
-        tdSvar.className = 'cell-svar';
+        // 15. Svar / Tråd
+        const tdSvar = skapaTabellCell('svar');
+        tdSvar.classList.add('cell-svar');
 
         if (Array.isArray(k.svar) && k.svar.length > 0) {
           const svarListaDiv = document.createElement('div');
@@ -3719,26 +3951,26 @@
         tr.appendChild(tdSvar);
 
         // 16. Skapad datum
-        const tdSkapad = document.createElement('td');
+        const tdSkapad = skapaTabellCell('skapadVid');
         tdSkapad.style.whiteSpace = 'nowrap';
         tdSkapad.textContent = k.skapadVid ? new Date(k.skapadVid).toLocaleString('sv-SE') : '';
         tr.appendChild(tdSkapad);
 
         // 17. X (%)
-        const tdX = document.createElement('td');
-        tdX.className = 'cell-koordinat';
+        const tdX = skapaTabellCell('xProcent');
+        tdX.classList.add('cell-koordinat');
         tdX.textContent = (k.xProcent * 100).toFixed(1) + '%';
         tr.appendChild(tdX);
 
         // 18. Y (%)
-        const tdY = document.createElement('td');
-        tdY.className = 'cell-koordinat';
+        const tdY = skapaTabellCell('yProcent');
+        tdY.classList.add('cell-koordinat');
         tdY.textContent = (k.yProcent * 100).toFixed(1) + '%';
         tr.appendChild(tdY);
 
         // 19. Ytpunkter
-        const tdYtpunkter = document.createElement('td');
-        tdYtpunkter.className = 'cell-ytpunkter';
+        const tdYtpunkter = skapaTabellCell('ytpunkter');
+        tdYtpunkter.classList.add('cell-ytpunkter');
         tdYtpunkter.textContent = ytpunkterStrang;
         tdYtpunkter.title = ytpunkterStrang;
         tr.appendChild(tdYtpunkter);
@@ -3749,6 +3981,8 @@
 
         tabellVyKropp.appendChild(tr);
       }
+
+      uppdateraTabellKolumnSynlighetDOM();
     }
 
     async function hoppaTillKommentarFranTabell(pdfNyckel, kommentarId) {
