@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF-granskningsverktyg (Flikar, Sidrotation, Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
+  <title>PDF-granskningsverktyg</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
@@ -1402,19 +1402,19 @@
               <th data-kolumn-id="atgard">Åtgärd</th>
               <th class="sorterbar" data-kolumn-id="globaltNr" data-sort-kolumn="globaltNr">Globalt nr <span class="sorterings-pil">▲</span></th>
               <th class="sorterbar" data-kolumn-id="lokaltNr" data-sort-kolumn="lokaltNr">Nr (i PDF) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="filnamn" data-sort-kolumn="filnamn">PDF-dokument <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="sida" data-sort-kolumn="sida">Sida <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="status" data-sort-kolumn="status">Status <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="forfattare" data-sort-kolumn="forfattare">Författare (E-post) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="kommentar" data-sort-kolumn="kommentar">Kommentar <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="svar" data-sort-kolumn="svar">Svar / Tråd <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-kolumn-id="skapadVid" data-sort-kolumn="skapadVid">Skapad datum <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="beskrivning" data-sort-kolumn="beskrivning">Statusbeskrivning <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="farg" data-sort-kolumn="farg">Färg <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="andradAv" data-sort-kolumn="andradAv">Status ändrad av <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="typ" data-sort-kolumn="typ">Typ <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="mapp" data-sort-kolumn="mapp">Mapp <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="filnamn" data-sort-kolumn="filnamn">PDF-dokument <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="sokvag" data-sort-kolumn="sokvag">Fullständig sökväg <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="sida" data-sort-kolumn="sida">Sida <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="forfattare" data-sort-kolumn="forfattare">Författare (E-post) <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="kommentar" data-sort-kolumn="kommentar">Kommentar <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="svar" data-sort-kolumn="svar">Svar / Tråd <span class="sorterings-pil">↕</span></th>
-              <th class="sorterbar" data-kolumn-id="skapadVid" data-sort-kolumn="skapadVid">Skapad datum <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="xProcent" data-sort-kolumn="xProcent">X (%) <span class="sorterings-pil">↕</span></th>
               <th class="sorterbar" data-kolumn-id="yProcent" data-sort-kolumn="yProcent">Y (%) <span class="sorterings-pil">↕</span></th>
               <th data-kolumn-id="ytpunkter">Ytpunkter</th>
@@ -1480,24 +1480,24 @@
     const STANDARD_STATUS = 'Ny kommentar';
     const MAX_ANTAL_FLIKAR = 8;
 
-    /* --- KOLUMNKONFIGURATION FÖR TABELLVYN (Tekniska kolumner dolda som standard) --- */
+    /* --- KOLUMNKONFIGURATION FÖR TABELLVYN (Sida direkt efter PDF-dokument) --- */
     const TABELL_KOLUMNER_DEFINITION = [
       { id: 'atgard', etikett: 'Åtgärd (Öppna)', standardSynlig: true },
       { id: 'globaltNr', etikett: 'Globalt nr', standardSynlig: false },
       { id: 'lokaltNr', etikett: 'Nr (i PDF)', standardSynlig: true },
+      { id: 'filnamn', etikett: 'PDF-dokument', standardSynlig: true },
+      { id: 'sida', etikett: 'Sida', standardSynlig: true },
       { id: 'status', etikett: 'Status', standardSynlig: true },
+      { id: 'forfattare', etikett: 'Författare (E-post)', standardSynlig: true },
+      { id: 'kommentar', etikett: 'Kommentar', standardSynlig: true },
+      { id: 'svar', etikett: 'Svar / Tråd', standardSynlig: true },
+      { id: 'skapadVid', etikett: 'Skapad datum', standardSynlig: true },
       { id: 'beskrivning', etikett: 'Statusbeskrivning', standardSynlig: false },
       { id: 'farg', etikett: 'Färg', standardSynlig: false },
       { id: 'andradAv', etikett: 'Status ändrad av', standardSynlig: true },
       { id: 'typ', etikett: 'Typ (Nål/Ruta/Yta)', standardSynlig: true },
       { id: 'mapp', etikett: 'Mapp', standardSynlig: true },
-      { id: 'filnamn', etikett: 'PDF-dokument', standardSynlig: true },
       { id: 'sokvag', etikett: 'Fullständig sökväg', standardSynlig: false },
-      { id: 'sida', etikett: 'Sida', standardSynlig: true },
-      { id: 'forfattare', etikett: 'Författare (E-post)', standardSynlig: true },
-      { id: 'kommentar', etikett: 'Kommentar', standardSynlig: true },
-      { id: 'svar', etikett: 'Svar / Tråd', standardSynlig: true },
-      { id: 'skapadVid', etikett: 'Skapad datum', standardSynlig: true },
       { id: 'xProcent', etikett: 'X (%)', standardSynlig: false },
       { id: 'yProcent', etikett: 'Y (%)', standardSynlig: false },
       { id: 'ytpunkter', etikett: 'Ytpunkter', standardSynlig: false }
@@ -1584,7 +1584,6 @@
     let vantandeSparaEfterAktuell = false;
 
     /* --- TILLSTÅNDSVARIABLER FÖR FLIKAR (MAX 8 FLIKAR + LOCALSTORAGE) --- */
-    // Varje flik i oppnaFlikar: { id, pdfNyckel, zoomLage, scrollTop, scrollLeft, lastKommentarId, sokFras, filterForfattare, filterStatus, pdfDokument }
     let oppnaFlikar = [];
     let aktivFlikId = null;
     let oppnaNastaValINyFlik = false;
@@ -1782,7 +1781,6 @@
       }
     }
 
-    // Spara scrollposition till aktiv flik och localStorage när användaren scrollar i PDF-visningsytan
     pdfVisningsyta.addEventListener('scroll', () => {
       if (!aktivFlikId) return;
       const flik = oppnaFlikar.find(f => f.id === aktivFlikId);
@@ -2762,7 +2760,6 @@
       fyllPdfValjareDOM(pdfNycklar);
 
       if (pdfNycklar.length > 0) {
-        // Kontrollera om det finns sparade flikar i localStorage för denna granskningsmapp
         const sparadeFlikarData = lasSparadeFlikarFranLocalStorage(pdfNycklar);
         if (sparadeFlikarData && sparadeFlikarData.flikar.length > 0) {
           oppnaFlikar = sparadeFlikarData.flikar.map((f, idx) => ({
@@ -4105,7 +4102,7 @@
     async function exporteraAllaPdfTillCsv() {
       if (inlastaPdfNycklar.length === 0) return;
 
-      const rubriker = ['Globalt nr', 'Nr (i PDF)', 'Status', 'Statusbeskrivning', 'Färg', 'Status ändrad av', 'Typ', 'Mapp', 'PDF-dokument', 'Fullständig sökväg', 'Sida', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'X (%)', 'Y (%)', 'Ytpunkter'];
+      const rubriker = ['Globalt nr', 'Nr (i PDF)', 'PDF-dokument', 'Sida', 'Status', 'Författare (E-post)', 'Kommentar', 'Svar / Tråd', 'Skapad datum', 'Statusbeskrivning', 'Färg', 'Status ändrad av', 'Typ', 'Mapp', 'Fullständig sökväg', 'X (%)', 'Y (%)', 'Ytpunkter'];
       const rader = [];
       let globaltIndex = 1;
 
@@ -4122,19 +4119,19 @@
           rader.push([
             globaltIndex++,
             lokaltIdx + 1,
+            filnamn,
+            k.sida,
             stInfo.kod,
+            k.forfattare,
+            k.innehall,
+            formateraSvarForCsv(k.svar),
+            k.skapadVid ? new Date(k.skapadVid).toLocaleString('sv-SE') : '',
             stInfo.beskrivning,
             stInfo.fargNamn,
             k.statusUppdateradAv || '',
             typEtikett,
             mapp || '(Rotmapp)',
-            filnamn,
             pdfNyckel,
-            k.sida,
-            k.forfattare,
-            k.innehall,
-            formateraSvarForCsv(k.svar),
-            k.skapadVid ? new Date(k.skapadVid).toLocaleString('sv-SE') : '',
             (k.xProcent * 100).toFixed(1) + '%',
             (k.yProcent * 100).toFixed(1) + '%',
             Array.isArray(k.punkter)
@@ -4331,19 +4328,19 @@
       switch (kolumn) {
         case 'globaltNr': return post.globaltNr;
         case 'lokaltNr': return post.lokaltNr;
+        case 'filnamn': return post.filnamn;
+        case 'sida': return k.sida;
         case 'status': return stInfo.kod;
+        case 'forfattare': return k.forfattare || '';
+        case 'kommentar': return k.innehall || '';
+        case 'svar': return formateraSvarForCsv(k.svar);
+        case 'skapadVid': return k.skapadVid || '';
         case 'beskrivning': return stInfo.beskrivning;
         case 'farg': return stInfo.fargNamn;
         case 'andradAv': return k.statusUppdateradAv || '';
         case 'typ': return k.typ || '';
         case 'mapp': return post.mapp;
-        case 'filnamn': return post.filnamn;
         case 'sokvag': return post.pdfNyckel;
-        case 'sida': return k.sida;
-        case 'forfattare': return k.forfattare || '';
-        case 'kommentar': return k.innehall || '';
-        case 'svar': return formateraSvarForCsv(k.svar);
-        case 'skapadVid': return k.skapadVid || '';
         case 'xProcent': return k.xProcent;
         case 'yProcent': return k.yProcent;
         default: return post.globaltNr;
@@ -4566,7 +4563,18 @@
         tdLokaltNr.textContent = `#${post.lokaltNr}`;
         tr.appendChild(tdLokaltNr);
 
-        // 4. Status (interaktiv väljare)
+        // 4. PDF-dokument (Direkt efter Nr i PDF)
+        const tdFilnamn = skapaTabellCell('filnamn');
+        tdFilnamn.style.fontWeight = '600';
+        tdFilnamn.textContent = post.filnamn;
+        tr.appendChild(tdFilnamn);
+
+        // 5. Sida (Direkt efter PDF-dokument)
+        const tdSida = skapaTabellCell('sida');
+        tdSida.textContent = k.sida;
+        tr.appendChild(tdSida);
+
+        // 6. Status (interaktiv väljare)
         const tdStatus = skapaTabellCell('status');
         const statusSelect = document.createElement('select');
         statusSelect.className = 'status-valjare-kort';
@@ -4612,58 +4620,13 @@
         tdStatus.appendChild(statusSelect);
         tr.appendChild(tdStatus);
 
-        // 5. Statusbeskrivning
-        const tdBeskrivning = skapaTabellCell('beskrivning');
-        tdBeskrivning.className += ' cell-beskrivning';
-        tdBeskrivning.textContent = stInfo.beskrivning;
-        tr.appendChild(tdBeskrivning);
-
-        // 6. Färg
-        const tdFarg = skapaTabellCell('farg');
-        tdFarg.style.whiteSpace = 'nowrap';
-        tdFarg.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${stInfo.farg};margin-right:5px;vertical-align:middle;"></span>${stInfo.fargNamn}`;
-        tr.appendChild(tdFarg);
-
-        // 7. Status ändrad av
-        const tdAndradAv = skapaTabellCell('andradAv');
-        tdAndradAv.textContent = k.statusUppdateradAv || '';
-        tr.appendChild(tdAndradAv);
-
-        // 8. Typ
-        const tdTyp = skapaTabellCell('typ');
-        tdTyp.style.whiteSpace = 'nowrap';
-        tdTyp.textContent = typEtikett;
-        tr.appendChild(tdTyp);
-
-        // 9. Mapp
-        const tdMapp = skapaTabellCell('mapp');
-        tdMapp.textContent = post.mapp;
-        tr.appendChild(tdMapp);
-
-        // 10. PDF-dokument
-        const tdFilnamn = skapaTabellCell('filnamn');
-        tdFilnamn.style.fontWeight = '600';
-        tdFilnamn.textContent = post.filnamn;
-        tr.appendChild(tdFilnamn);
-
-        // 11. Fullständig sökväg
-        const tdSokvag = skapaTabellCell('sokvag');
-        tdSokvag.style.color = '#64748b';
-        tdSokvag.textContent = post.pdfNyckel;
-        tr.appendChild(tdSokvag);
-
-        // 12. Sida
-        const tdSida = skapaTabellCell('sida');
-        tdSida.textContent = k.sida;
-        tr.appendChild(tdSida);
-
-        // 13. Författare (E-post)
+        // 7. Författare (E-post) (Direkt efter Status)
         const tdForfattare = skapaTabellCell('forfattare');
         tdForfattare.style.fontWeight = '600';
         tdForfattare.textContent = k.forfattare;
         tr.appendChild(tdForfattare);
 
-        // 14. Kommentar
+        // 8. Kommentar
         const tdKommentar = skapaTabellCell('kommentar');
         tdKommentar.classList.add('cell-kommentar');
 
@@ -4740,7 +4703,7 @@
         }
         tr.appendChild(tdKommentar);
 
-        // 15. Svar / Tråd
+        // 9. Svar / Tråd
         const tdSvar = skapaTabellCell('svar');
         tdSvar.classList.add('cell-svar');
 
@@ -4852,11 +4815,45 @@
         }
         tr.appendChild(tdSvar);
 
-        // 16. Skapad datum
+        // 10. Skapad datum
         const tdSkapad = skapaTabellCell('skapadVid');
         tdSkapad.style.whiteSpace = 'nowrap';
         tdSkapad.textContent = k.skapadVid ? new Date(k.skapadVid).toLocaleString('sv-SE') : '';
         tr.appendChild(tdSkapad);
+
+        // 11. Statusbeskrivning
+        const tdBeskrivning = skapaTabellCell('beskrivning');
+        tdBeskrivning.className += ' cell-beskrivning';
+        tdBeskrivning.textContent = stInfo.beskrivning;
+        tr.appendChild(tdBeskrivning);
+
+        // 12. Färg
+        const tdFarg = skapaTabellCell('farg');
+        tdFarg.style.whiteSpace = 'nowrap';
+        tdFarg.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${stInfo.farg};margin-right:5px;vertical-align:middle;"></span>${stInfo.fargNamn}`;
+        tr.appendChild(tdFarg);
+
+        // 13. Status ändrad av
+        const tdAndradAv = skapaTabellCell('andradAv');
+        tdAndradAv.textContent = k.statusUppdateradAv || '';
+        tr.appendChild(tdAndradAv);
+
+        // 14. Typ
+        const tdTyp = skapaTabellCell('typ');
+        tdTyp.style.whiteSpace = 'nowrap';
+        tdTyp.textContent = typEtikett;
+        tr.appendChild(tdTyp);
+
+        // 15. Mapp
+        const tdMapp = skapaTabellCell('mapp');
+        tdMapp.textContent = post.mapp;
+        tr.appendChild(tdMapp);
+
+        // 16. Fullständig sökväg
+        const tdSokvag = skapaTabellCell('sokvag');
+        tdSokvag.style.color = '#64748b';
+        tdSokvag.textContent = post.pdfNyckel;
+        tr.appendChild(tdSokvag);
 
         // 17. X (%)
         const tdX = skapaTabellCell('xProcent');
