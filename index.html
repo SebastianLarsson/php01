@@ -129,6 +129,13 @@
       background: #eab308;
       box-shadow: 0 0 6px #eab308;
     }
+    .synk-tid-text {
+      font-size: 0.76rem;
+      color: #93c5fd;
+      padding-left: 0.4rem;
+      border-left: 1px solid #334155;
+      white-space: nowrap;
+    }
 
     /* Verktygsväljare */
     .verktygs-valjare {
@@ -167,7 +174,8 @@
     #pdf-visningsyta {
       flex: 1;
       overflow-y: auto;
-      padding: 2rem;
+      overflow-x: auto;
+      padding: 1.5rem;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -407,6 +415,7 @@
       display: flex;
       flex-direction: column;
       z-index: 10;
+      flex-shrink: 0;
     }
     .sidopanel-huvud {
       padding: 0.8rem 1rem;
@@ -971,8 +980,8 @@
         <input type="email" id="epost-falt" placeholder="namn@foretag.se" required style="width: 210px;" title="Ange din e-postadress (används som granskarnamn och i filnamnet)" />
       </label>
 
-      <button type="button" id="live-mapp-knapp" class="knapp" title="Öppna mapp med automatisk synkning och direktsparning">
-        🔄 Öppna synkmapp
+      <button type="button" id="live-mapp-knapp" class="knapp" title="Öppna granskningsmapp med automatisk synkning och direktsparning">
+        🔄 Öppna granskningsmapp
       </button>
 
       <select id="pdf-valjare" disabled>
@@ -992,13 +1001,14 @@
         <span>Autosynk:</span>
         <select id="synk-intervall-valjare" disabled style="padding: 0.15rem 0.3rem; font-size: 0.78rem;">
           <option value="0">Av</option>
-          <option value="5000">5 s</option>
-          <option value="10000" selected>10 s</option>
+          <option value="5000" selected>5 s</option>
+          <option value="10000">10 s</option>
           <option value="30000">30 s</option>
         </select>
         <button type="button" id="synka-nu-knapp" class="knapp sekundar" disabled style="padding: 0.2rem 0.45rem; font-size: 0.75rem;" title="Tvinga fullständig mappsynkning nu">
           ↻
         </button>
+        <span id="synk-tid-text" class="synk-tid-text">Ej kopplad</span>
       </div>
 
       <button id="vaxla-synlighet-knapp" class="knapp sekundar" disabled title="Visa eller dölj alla markeringar på sidan">
@@ -1007,9 +1017,15 @@
       <label>
         Zoom:
         <select id="zoom-valjare" disabled>
+          <option value="fit-width" selected>Anpassa bredd</option>
+          <option value="0.5">50%</option>
+          <option value="0.75">75%</option>
           <option value="1">100%</option>
-          <option value="1.25" selected>125%</option>
+          <option value="1.25">125%</option>
           <option value="1.5">150%</option>
+          <option value="2">200%</option>
+          <option value="2.5">250%</option>
+          <option value="3">300%</option>
         </select>
       </label>
       <button id="exportera-pdf-knapp" class="knapp sekundar" disabled title="Exportera kommentarer för aktuell PDF till Excel (.csv)">
@@ -1030,7 +1046,7 @@
         <h3>PDF-granskningsverktyg (BEAst Effektivare granskning 3.0)</h3>
         <ol>
           <li>Skriv in din <strong>E-post</strong> i rutan längst upp till vänster (obligatoriskt). Din kommentarfil döps automatiskt efter hela din e-postadress.</li>
-          <li>Klicka på <strong>🔄 Öppna synkmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
+          <li>Klicka på <strong>🔄 Öppna granskningsmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
           <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
           <li>Klicka på <strong>📋 Tabellvy (Alla PDF)</strong> längst upp till höger för att sortera, filtrera, svara, redigera och ändra status bland samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
         </ol>
@@ -1324,14 +1340,15 @@
     let spararTillDisk = false;
     let vantandeSparaEfterAktuell = false;
 
-    // Tillståndsvariabler för PDF, Lazy Rendering och kommentarer
+    // Tillståndsvariabler för PDF, Zoom, Lazy Rendering och kommentarer
     let inlastaPdfNycklar = [];
     let pdfSammanfattningKarta = new Map();
     let aktuellPdfNyckel = '';
     let aktuellPdfNamn = '';
     let pdfDokument = null;
-    let aktuellSkala = 1.25;
+    let valtZoomLage = 'fit-width'; // 'fit-width' eller numerisk sträng ('0.5', '1', '1.25' osv.)
     let sidObservator = null;
+    let fonsterStorlekTimer = null;
     let allaKommentarer = [];
     let minaStatusUppdateringar = {};
     let minaSvar = [];
@@ -1367,6 +1384,7 @@
     const synkIntervallValjare = document.getElementById('synk-intervall-valjare');
     const synkaNuKnapp = document.getElementById('synka-nu-knapp');
     const synkPrick = document.getElementById('synk-prick');
+    const synkTidText = document.getElementById('synk-tid-text');
     const zoomValjare = document.getElementById('zoom-valjare');
     const exporteraPdfKnapp = document.getElementById('exportera-pdf-knapp');
     const exporteraAllaKnapp = document.getElementById('exportera-alla-knapp');
@@ -1662,6 +1680,12 @@
       return { utFilerKarta, utAndradKarta };
     }
 
+    function uppdateraSynkTidVisning(prefixText = 'Synkad') {
+      const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
+      synkTidText.textContent = `${prefixText} ${tidsStämpel}`;
+      synkBricka.title = `${prefixText} ${tidsStämpel}`;
+    }
+
     async function snabbsynkaAktivPdfMapp() {
       if (!mappHandtag || !aktuellPdfNyckel || synkarNu || spararTillDisk) return;
       synkarNu = true;
@@ -1708,6 +1732,8 @@
 
         if (harAndringar) {
           await uppdateraAktivPdfKommentarerVidSynk();
+        } else {
+          uppdateraSynkTidVisning('Synkad');
         }
       } catch (fel) {
         console.warn('Varning vid snabbsynk av aktiv PDF:', fel);
@@ -1761,9 +1787,13 @@
 
         if (arForstaInlasning) {
           await byggOmPdfValjareOchLaddaForsta();
+          uppdateraSynkTidVisning('Synkad');
         } else if (harFilAndringar) {
           byggPdfTillJsonIndex();
           await uppdateraKommentarerEfterFullSynk(andradeJsonNycklar);
+          uppdateraSynkTidVisning('Synkad');
+        } else {
+          uppdateraSynkTidVisning('Synkad');
         }
       } catch (fel) {
         console.warn('Varning vid mappsynkning:', fel);
@@ -1812,8 +1842,7 @@
 
       ritaAllaMarkeringarOchSidopanel();
       uppdateraAktuellPdfBricka();
-      const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-      synkBricka.title = `Senast synkad ${tidsStämpel}`;
+      uppdateraSynkTidVisning('Synkad');
     }
 
     async function uppdateraKommentarerEfterFullSynk(andradeJsonNycklar) {
@@ -1870,6 +1899,9 @@
         }, intervallMs);
       } else {
         synkPrick.classList.remove('aktiv', 'pausad');
+        if (mappHandtag) {
+          synkTidText.textContent = 'Autosynk av';
+        }
       }
     }
 
@@ -1878,6 +1910,7 @@
       if (document.hidden) {
         synkPrick.classList.remove('aktiv');
         synkPrick.classList.add('pausad');
+        synkTidText.textContent = 'Pausad (bakgrund)';
       } else {
         synkPrick.classList.remove('pausad');
         synkPrick.classList.add('aktiv');
@@ -1969,9 +2002,28 @@
     });
 
     zoomValjare.addEventListener('change', async (e) => {
-      aktuellSkala = parseFloat(e.target.value);
+      valtZoomLage = e.target.value;
       if (pdfDokument) await ritaAllaSidor();
     });
+
+    // Om "Anpassa bredd" är valt räknas skalan om automatiskt när fönstret ändrar storlek
+    window.addEventListener('resize', () => {
+      if (valtZoomLage !== 'fit-width' || !pdfDokument) return;
+      if (fonsterStorlekTimer) clearTimeout(fonsterStorlekTimer);
+      fonsterStorlekTimer = setTimeout(() => {
+        ritaAllaSidor();
+      }, 200);
+    });
+
+    function beraknaSkalaForSida(sida) {
+      if (valtZoomLage === 'fit-width') {
+        const basVy = sida.getViewport({ scale: 1 });
+        // Tillgänglig bredd i #pdf-visningsyta fram till kommentarsfältet minus marginal
+        const tillgangligBredd = Math.max(300, pdfVisningsyta.clientWidth - 48);
+        return tillgangligBredd / basVy.width;
+      }
+      return parseFloat(valtZoomLage) || 1.25;
+    }
 
     async function laddaPdfFranMinne(pdfNyckel) {
       try {
@@ -2233,7 +2285,13 @@
         const sida = await malPdf.getPage(sidNr);
         if (pdfDokument !== malPdf) return;
 
-        const visningsomrade = sida.getViewport({ scale: aktuellSkala });
+        const sidSkala = beraknaSkalaForSida(sida);
+        const visningsomrade = sida.getViewport({ scale: sidSkala });
+
+        // Uppdatera behållarens exakta dimensioner om sidan skiljer sig från platshållaren
+        behallare.style.width = `${visningsomrade.width}px`;
+        behallare.style.height = `${visningsomrade.height}px`;
+
         const canvas = document.createElement('canvas');
         canvas.width = visningsomrade.width;
         canvas.height = visningsomrade.height;
@@ -2265,7 +2323,8 @@
       avbrytRutaUtkast();
 
       const forstaSida = await pdfDokument.getPage(1);
-      const standardVy = forstaSida.getViewport({ scale: aktuellSkala });
+      const forstaSkala = beraknaSkalaForSida(forstaSida);
+      const standardVy = forstaSida.getViewport({ scale: forstaSkala });
 
       sidObservator = new IntersectionObserver((poster) => {
         for (const post of poster) {
@@ -2284,7 +2343,7 @@
         let sidHojd = standardVy.height;
         if (pdfDokument.numPages <= 30 && sidNr > 1) {
           const s = await pdfDokument.getPage(sidNr);
-          const v = s.getViewport({ scale: aktuellSkala });
+          const v = s.getViewport({ scale: beraknaSkalaForSida(s) });
           sidBredd = v.width;
           sidHojd = v.height;
         }
@@ -2984,6 +3043,7 @@
 
       const aktuellAnvandare = hamtaAktuellEpost();
       if (!arGiltigEpost(aktuellAnvandare)) {
+        synkTidText.textContent = 'Ogiltig e-post!';
         synkBricka.title = 'Autosparande pausat: Ange en giltig e-postadress!';
         return;
       }
@@ -3058,10 +3118,10 @@
         pdfTillJsonNycklarKarta.get(aktuellPdfNyckel).add(sidecarNyckel);
 
         harOsparadeAndringar = false;
-        const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-        synkBricka.title = `Autosparad ${tidsStämpel}`;
+        uppdateraSynkTidVisning('Sparad');
       } catch (fel) {
         console.error('Direktsparning till mapp misslyckades:', fel);
+        synkTidText.textContent = 'Sparfel!';
         synkBricka.title = 'Autosparande misslyckades (kontrollera mapprättigheter)';
       } finally {
         spararTillDisk = false;
@@ -3129,8 +3189,7 @@
         pdfTillJsonNycklarKarta.get(pdfNyckel).add(sidecarNyckel);
 
         await beraknaAllaPdfSammanfattningar([pdfNyckel]);
-        const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
-        synkBricka.title = `Autosparad ${tidsStämpel}`;
+        uppdateraSynkTidVisning('Sparad');
         return true;
       } catch (fel) {
         console.error('Misslyckades att spara ändring från tabellvy:', fel);
