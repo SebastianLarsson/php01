@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF-granskningsverktyg (BEAst 3.0, Tabellvy, Live-synk &amp; Autosparande)</title>
+  <title>PDF-granskningsverktyg (BEAst 3.0, Interaktiv Tabellvy, Nätverkssynk &amp; Lazy Rendering)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
@@ -125,6 +125,10 @@
       background: #22c55e;
       box-shadow: 0 0 6px #22c55e;
     }
+    .synk-prick.pausad {
+      background: #eab308;
+      box-shadow: 0 0 6px #eab308;
+    }
 
     /* Verktygsväljare */
     .verktygs-valjare {
@@ -213,6 +217,23 @@
       background: white;
       line-height: 0;
       user-select: none;
+      flex-shrink: 0;
+    }
+    .sid-laddar-etikett {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      color: var(--text-dold);
+      background: #f8fafc;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .sid-behallare canvas {
+      position: relative;
+      z-index: 2;
     }
     .kommentar-lager {
       position: absolute;
@@ -715,6 +736,27 @@
       border-bottom: 2px solid #cbd5e1;
       white-space: nowrap;
       z-index: 2;
+      user-select: none;
+    }
+    .kommentar-tabell thead th.sorterbar {
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .kommentar-tabell thead th.sorterbar:hover {
+      background: #cbd5e1;
+    }
+    .kommentar-tabell thead th.aktiv-sortering {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .sorterings-pil {
+      display: inline-block;
+      margin-left: 0.25rem;
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+    .kommentar-tabell thead th.aktiv-sortering .sorterings-pil {
+      color: #1d4ed8;
     }
     .kommentar-tabell tbody tr {
       border-bottom: 1px solid #e2e8f0;
@@ -736,13 +778,20 @@
       vertical-align: top;
       line-height: 1.4;
     }
-    .cell-kommentar, .cell-svar {
-      max-width: 320px;
+    .cell-kommentar {
+      min-width: 240px;
+      max-width: 340px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .cell-svar {
+      min-width: 260px;
+      max-width: 360px;
       white-space: pre-wrap;
       word-break: break-word;
     }
     .cell-beskrivning {
-      max-width: 220px;
+      max-width: 210px;
       color: var(--text-dold);
       font-size: 0.75rem;
     }
@@ -753,7 +802,7 @@
       color: var(--text-dold);
     }
     .cell-ytpunkter {
-      max-width: 160px;
+      max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -776,6 +825,59 @@
       background: var(--accent);
       color: #fff;
       border-color: var(--accent);
+    }
+
+    /* Interaktiva element inuti tabellceller */
+    .tabell-cell-atgarder {
+      margin-top: 0.35rem;
+      display: flex;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+    }
+    .tabell-svar-lista {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      margin-bottom: 0.35rem;
+    }
+    .tabell-svar-post {
+      background: #f8fafc;
+      border-left: 3px solid #94a3b8;
+      padding: 0.25rem 0.45rem;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.76rem;
+    }
+    .tabell-svar-huvud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.68rem;
+      color: var(--text-dold);
+      margin-bottom: 0.1rem;
+    }
+    .tabell-redigera-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      cursor: default;
+    }
+    .tabell-redigera-box textarea {
+      width: 100%;
+      min-height: 58px;
+      padding: 0.35rem;
+      border: 1px solid var(--kantlinje);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.78rem;
+      resize: vertical;
+    }
+    .tabell-redigera-box select {
+      width: 100%;
+      padding: 0.25rem 0.35rem;
+      border: 1px solid var(--kantlinje);
+      border-radius: 4px;
+      font-size: 0.74rem;
+      background: #fff;
     }
   </style>
 </head>
@@ -804,7 +906,7 @@
     </div>
 
     <div class="verktygsgrupp">
-      <div class="synk-bricka" title="Automatisk mappsynkning och autosparande är aktivt">
+      <div class="synk-bricka" title="Snabbsynkar aktivt dokument automatiskt (pausar när fliken ligger i bakgrunden)">
         <span id="synk-prick" class="synk-prick"></span>
         <span>Autosynk:</span>
         <select id="synk-intervall-valjare" disabled style="padding: 0.15rem 0.3rem; font-size: 0.78rem;">
@@ -813,7 +915,7 @@
           <option value="10000" selected>10 s</option>
           <option value="30000">30 s</option>
         </select>
-        <button type="button" id="synka-nu-knapp" class="knapp sekundar" disabled style="padding: 0.2rem 0.45rem; font-size: 0.75rem;" title="Kontrollera mappen efter ändringar nu">
+        <button type="button" id="synka-nu-knapp" class="knapp sekundar" disabled style="padding: 0.2rem 0.45rem; font-size: 0.75rem;" title="Tvinga fullständig mappsynkning nu">
           ↻
         </button>
       </div>
@@ -850,7 +952,7 @@
           <li>Skriv in din <strong>E-post</strong> i rutan längst upp till vänster (obligatoriskt). Din kommentarfil döps automatiskt efter hela din e-postadress.</li>
           <li>Klicka på <strong>🔄 Öppna synkmapp</strong> för att koppla en gemensam mapp med automatisk bakgrundssynkning och direkt autosparande.</li>
           <li>Alla nya kommentarer får automatiskt statusen <strong>Ny kommentar</strong> (Rosa). Byt status direkt i rullgardinsmenyn på respektive kommentar eller i samband med att du svarar i tråden.</li>
-          <li>Klicka på <strong>📋 Tabellvy (Alla PDF)</strong> längst upp till höger för att se, filtrera, ändra status och navigera bland samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
+          <li>Klicka på <strong>📋 Tabellvy (Alla PDF)</strong> längst upp till höger för att sortera, filtrera, svara, redigera och ändra status bland samtliga kommentarer i alla PDF-filer i en gemensam tabell.</li>
         </ol>
         <div class="beast-lista">
           <strong>Statusar enligt BEAst Effektivare granskning 3.0:</strong>
@@ -939,26 +1041,26 @@
 
       <div class="tabell-omslag">
         <table class="kommentar-tabell">
-          <thead>
+          <thead id="tabell-vy-huvud-rad">
             <tr>
               <th>Åtgärd</th>
-              <th>Globalt nr</th>
-              <th>Nr (i PDF)</th>
-              <th>BEAst-status</th>
-              <th>Statusbeskrivning</th>
-              <th>Färg (BEAst)</th>
-              <th>Status ändrad av</th>
-              <th>Typ</th>
-              <th>Mapp</th>
-              <th>PDF-dokument</th>
-              <th>Fullständig sökväg</th>
-              <th>Sida</th>
-              <th>Författare (E-post)</th>
-              <th>Kommentar</th>
-              <th>Svar / Tråd</th>
-              <th>Skapad datum</th>
-              <th>X (%)</th>
-              <th>Y (%)</th>
+              <th class="sorterbar" data-sort-kolumn="globaltNr">Globalt nr <span class="sorterings-pil">▲</span></th>
+              <th class="sorterbar" data-sort-kolumn="lokaltNr">Nr (i PDF) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="status">BEAst-status <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="beskrivning">Statusbeskrivning <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="farg">Färg (BEAst) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="andradAv">Status ändrad av <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="typ">Typ <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="mapp">Mapp <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="filnamn">PDF-dokument <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="sokvag">Fullständig sökväg <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="sida">Sida <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="forfattare">Författare (E-post) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="kommentar">Kommentar <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="svar">Svar / Tråd <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="skapadVid">Skapad datum <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="xProcent">X (%) <span class="sorterings-pil">↕</span></th>
+              <th class="sorterbar" data-sort-kolumn="yProcent">Y (%) <span class="sorterings-pil">↕</span></th>
               <th>Ytpunkter</th>
             </tr>
           </thead>
@@ -1039,12 +1141,17 @@
       return hamtaStatusInfo(statusKod).arHanterad;
     }
 
-    // Tillståndsvariabler för filer och synkning
+    /* --- TILLSTÅNDSVARIABLER FÖR FILER, CACHE OCH SYNKNING --- */
     let inlastaFilerKarta = new Map();
     let filSenastAndradKarta = new Map();
+    let jsonInnehallCache = new Map();
+    let mappHandtagCache = new Map();
+    let pdfTillJsonNycklarKarta = new Map();
+
     let mappHandtag = null;
     let synkTimerId = null;
     let synkarNu = false;
+    let synkCykelRaknare = 0;
     let harOsparadeAndringar = false;
 
     // Köhantering för autosparande
@@ -1052,21 +1159,26 @@
     let spararTillDisk = false;
     let vantandeSparaEfterAktuell = false;
 
-    // Tillståndsvariabler för PDF och kommentarer
+    // Tillståndsvariabler för PDF, Lazy Rendering och kommentarer
     let inlastaPdfNycklar = [];
     let pdfSammanfattningKarta = new Map();
     let aktuellPdfNyckel = '';
     let aktuellPdfNamn = '';
     let pdfDokument = null;
     let aktuellSkala = 1.25;
+    let sidObservator = null;
     let allaKommentarer = [];
     let minaStatusUppdateringar = {};
     let minaSvar = [];
     let aktivtSvarKommentarId = null;
     let aktivPopruta = null;
 
-    // Data för global tabellvy
+    // Data, sortering och redigeringstillstånd för global tabellvy
     let allaMappKommentarerCache = [];
+    let tabellSorteringKolumn = 'globaltNr';
+    let tabellSorteringStigande = true;
+    let aktivTabellRedigeraNyckel = null; // `${pdfNyckel}::${kommentarId}`
+    let aktivTabellSvaraNyckel = null;    // `${pdfNyckel}::${kommentarId}`
 
     // Rit- och redigeringsverktyg
     let aktuelltVerktyg = 'nal';
@@ -1115,9 +1227,9 @@
     const tabellFilterPdf = document.getElementById('tabell-filter-pdf');
     const tabellFilterForfattare = document.getElementById('tabell-filter-forfattare');
     const tabellFilterStatus = document.getElementById('tabell-filter-status');
+    const tabellVyHuvudRad = document.getElementById('tabell-vy-huvud-rad');
     const tabellVyKropp = document.getElementById('tabell-vy-kropp');
 
-    // Läs in tidigare sparad e-postadress från webbläsaren om den finns
     const sparadEpost = localStorage.getItem('granskning_epost');
     if (sparadEpost) {
       epostFalt.value = sparadEpost;
@@ -1229,6 +1341,47 @@
       };
     }
 
+    /* --- CACHAD LÄSNING AV JSON-FILER --- */
+    async function hamtaEllerLasJsonData(nyckel, fil) {
+      const modTid = fil.lastModified;
+      const cachad = jsonInnehallCache.get(nyckel);
+      if (cachad && cachad.lastModified === modTid) {
+        return cachad.data;
+      }
+      const text = await fil.text();
+      const data = JSON.parse(text);
+      jsonInnehallCache.set(nyckel, { lastModified: modTid, data });
+      return data;
+    }
+
+    function byggPdfTillJsonIndex() {
+      pdfTillJsonNycklarKarta.clear();
+      const mappTillPdfer = new Map();
+
+      for (const pdfNyckel of inlastaPdfNycklar) {
+        pdfTillJsonNycklarKarta.set(pdfNyckel, new Set());
+        const { mapp, filnamn } = delaMappOchFilnamn(pdfNyckel);
+        if (!mappTillPdfer.has(mapp)) {
+          mappTillPdfer.set(mapp, []);
+        }
+        mappTillPdfer.get(mapp).push({ pdfNyckel, prefix: `${filnamn}.` });
+      }
+
+      const suffix = '.comments.json';
+      for (const [nyckel] of inlastaFilerKarta.entries()) {
+        if (!nyckel.toLowerCase().endsWith(suffix)) continue;
+        const { mapp, filnamn } = delaMappOchFilnamn(nyckel);
+        const kandidater = mappTillPdfer.get(mapp);
+        if (!kandidater) continue;
+
+        for (const kand of kandidater) {
+          if (filnamn.startsWith(kand.prefix)) {
+            pdfTillJsonNycklarKarta.get(kand.pdfNyckel).add(nyckel);
+          }
+        }
+      }
+    }
+
     /* --- HJÄLPFUNKTIONER FÖR STATUSBRICKOR I PDF-MENYN --- */
     function formateraPdfBrickaSuffix(statistik) {
       if (!statistik || statistik.totalt === 0) return '';
@@ -1238,8 +1391,9 @@
       return ` ✅ (${statistik.totalt} hanterade)`;
     }
 
-    async function beraknaAllaPdfSammanfattningar() {
-      for (const pdfNyckel of inlastaPdfNycklar) {
+    async function beraknaAllaPdfSammanfattningar(endastPdfNycklar = null) {
+      const malLista = endastPdfNycklar || inlastaPdfNycklar;
+      for (const pdfNyckel of malLista) {
         if (pdfNyckel === aktuellPdfNyckel && pdfDokument) {
           const totalt = allaKommentarer.length;
           const aktiva = allaKommentarer.filter(k => !arStatusHanterad(k.status)).length;
@@ -1275,7 +1429,7 @@
       });
     }
 
-    /* --- LIVE-SYNK MAPPVÄLJARE (File System Access API) --- */
+    /* --- OPTIMERAD LIVE-SYNK (TVÅSTEGSSYNK + PAUS I BAKGRUNDEN) --- */
     liveMappKnapp.addEventListener('click', async () => {
       if (!kontrolleraEpostEllerVarna()) return;
 
@@ -1292,10 +1446,12 @@
       try {
         const handtag = await window.showDirectoryPicker({ mode: 'readwrite' });
         mappHandtag = handtag;
+        mappHandtagCache.clear();
+        jsonInnehallCache.clear();
         synkIntervallValjare.disabled = false;
         synkaNuKnapp.disabled = false;
 
-        await skannaMappHandtag(true);
+        await skannaMappHandtag({ arForstaInlasning: true, tvingaFullSkann: true });
         konfigureraAutosynkTimer();
       } catch (fel) {
         if (fel.name !== 'AbortError') {
@@ -1305,39 +1461,124 @@
       }
     });
 
-    async function lasMappRekursivt(katalogHandtag, prefix = '', utFilerKarta = new Map(), utAndradKarta = new Map()) {
+    async function lasMappRekursivt(katalogHandtag, prefix = '', utFilerKarta = new Map(), utAndradKarta = new Map(), lasInPdfFiler = true) {
+      mappHandtagCache.set(prefix, katalogHandtag);
       for await (const post of katalogHandtag.values()) {
         const relativSokvag = prefix ? `${prefix}/${post.name}` : post.name;
         if (post.kind === 'file') {
           const gemener = post.name.toLowerCase();
-          if (gemener.endsWith('.pdf') || gemener.endsWith('.comments.json')) {
+          if (gemener.endsWith('.comments.json')) {
             const fil = await post.getFile();
             utFilerKarta.set(relativSokvag, fil);
             utAndradKarta.set(relativSokvag, fil.lastModified);
+          } else if (gemener.endsWith('.pdf')) {
+            if (lasInPdfFiler || !inlastaFilerKarta.has(relativSokvag)) {
+              const fil = await post.getFile();
+              utFilerKarta.set(relativSokvag, fil);
+              utAndradKarta.set(relativSokvag, fil.lastModified);
+            } else {
+              utFilerKarta.set(relativSokvag, inlastaFilerKarta.get(relativSokvag));
+              utAndradKarta.set(relativSokvag, filSenastAndradKarta.get(relativSokvag));
+            }
           }
         } else if (post.kind === 'directory') {
-          await lasMappRekursivt(post, relativSokvag, utFilerKarta, utAndradKarta);
+          await lasMappRekursivt(post, relativSokvag, utFilerKarta, utAndradKarta, lasInPdfFiler);
         }
       }
       return { utFilerKarta, utAndradKarta };
     }
 
-    async function skannaMappHandtag(arForstaInlasning = false) {
-      if (!mappHandtag || synkarNu || spararTillDisk) return;
+    async function snabbsynkaAktivPdfMapp() {
+      if (!mappHandtag || !aktuellPdfNyckel || synkarNu || spararTillDisk) return;
       synkarNu = true;
 
       try {
-        const { utFilerKarta, utAndradKarta } = await lasMappRekursivt(mappHandtag);
+        const { mapp, filnamn: pdfFilnamn } = delaMappOchFilnamn(aktuellPdfNyckel);
+        let målKatalog = mappHandtagCache.get(mapp);
+        if (!målKatalog) {
+          målKatalog = await hamtaUndermappHandtag(mappHandtag, mapp);
+          mappHandtagCache.set(mapp, målKatalog);
+        }
+
+        const prefix = `${pdfFilnamn}.`;
+        const suffix = '.comments.json';
+        const hittadeJsonNycklar = new Set();
+        let harAndringar = false;
+
+        for await (const post of målKatalog.values()) {
+          if (post.kind === 'file' && post.name.startsWith(prefix) && post.name.toLowerCase().endsWith(suffix)) {
+            const relSokvag = mapp ? `${mapp}/${post.name}` : post.name;
+            hittadeJsonNycklar.add(relSokvag);
+            const fil = await post.getFile();
+            if (filSenastAndradKarta.get(relSokvag) !== fil.lastModified) {
+              harAndringar = true;
+              inlastaFilerKarta.set(relSokvag, fil);
+              filSenastAndradKarta.set(relSokvag, fil.lastModified);
+            }
+          }
+        }
+
+        const tidigareSet = pdfTillJsonNycklarKarta.get(aktuellPdfNyckel) || new Set();
+        if (tidigareSet.size !== hittadeJsonNycklar.size) {
+          harAndringar = true;
+          for (const gammalNyckel of tidigareSet) {
+            if (!hittadeJsonNycklar.has(gammalNyckel)) {
+              inlastaFilerKarta.delete(gammalNyckel);
+              filSenastAndradKarta.delete(gammalNyckel);
+              jsonInnehallCache.delete(gammalNyckel);
+            }
+          }
+        }
+
+        pdfTillJsonNycklarKarta.set(aktuellPdfNyckel, hittadeJsonNycklar);
+
+        if (harAndringar) {
+          await uppdateraAktivPdfKommentarerVidSynk();
+        }
+      } catch (fel) {
+        console.warn('Varning vid snabbsynk av aktiv PDF:', fel);
+      } finally {
+        synkarNu = false;
+      }
+    }
+
+    async function skannaMappHandtag({ arForstaInlasning = false, tvingaFullSkann = false } = {}) {
+      if (!mappHandtag || synkarNu || spararTillDisk) return;
+
+      if (!arForstaInlasning && !tvingaFullSkann && aktuellPdfNyckel && !tabellVyModal.classList.contains('oppen')) {
+        synkCykelRaknare++;
+        if (synkCykelRaknare % 6 !== 0) {
+          await snabbsynkaAktivPdfMapp();
+          return;
+        }
+      }
+
+      synkarNu = true;
+
+      try {
+        const lasPdfMetadata = arForstaInlasning || tvingaFullSkann;
+        const { utFilerKarta, utAndradKarta } = await lasMappRekursivt(mappHandtag, '', new Map(), new Map(), lasPdfMetadata);
 
         let harFilAndringar = false;
+        const andradeJsonNycklar = new Set();
+
         if (utAndradKarta.size !== filSenastAndradKarta.size) {
           harFilAndringar = true;
-        } else {
-          for (const [nyckel, andradTid] of utAndradKarta.entries()) {
-            if (filSenastAndradKarta.get(nyckel) !== andradTid) {
-              harFilAndringar = true;
-              break;
+        }
+
+        for (const [nyckel, andradTid] of utAndradKarta.entries()) {
+          if (filSenastAndradKarta.get(nyckel) !== andradTid) {
+            harFilAndringar = true;
+            if (nyckel.toLowerCase().endsWith('.comments.json')) {
+              andradeJsonNycklar.add(nyckel);
             }
+          }
+        }
+
+        for (const gammalNyckel of filSenastAndradKarta.keys()) {
+          if (!utAndradKarta.has(gammalNyckel)) {
+            jsonInnehallCache.delete(gammalNyckel);
+            harFilAndringar = true;
           }
         }
 
@@ -1347,7 +1588,8 @@
         if (arForstaInlasning) {
           await byggOmPdfValjareOchLaddaForsta();
         } else if (harFilAndringar) {
-          await uppdateraKommentarerVidSynk();
+          byggPdfTillJsonIndex();
+          await uppdateraKommentarerEfterFullSynk(andradeJsonNycklar);
         }
       } catch (fel) {
         console.warn('Varning vid mappsynkning:', fel);
@@ -1356,27 +1598,11 @@
       }
     }
 
-    async function uppdateraKommentarerVidSynk() {
-      const nyaPdfNycklar = [];
-      for (const [nyckel, fil] of inlastaFilerKarta.entries()) {
-        if (fil.name.toLowerCase().endsWith('.pdf')) {
-          nyaPdfNycklar.push(nyckel);
-        }
-      }
-      sorteraPdfNycklar(nyaPdfNycklar);
-
-      if (JSON.stringify(nyaPdfNycklar) !== JSON.stringify(inlastaPdfNycklar)) {
-        inlastaPdfNycklar = nyaPdfNycklar;
-        fyllPdfValjareDOM(inlastaPdfNycklar);
-        if (aktuellPdfNyckel && inlastaPdfNycklar.includes(aktuellPdfNyckel)) {
-          pdfValjare.value = aktuellPdfNyckel;
-        }
-      }
-
+    async function uppdateraAktivPdfKommentarerVidSynk() {
       if (!aktuellPdfNyckel) return;
 
-      if (aktivPopruta || aktivtPolygonUtkast || aktivtRutaUtkast || aktivRedigeringsDragning || spararTillDisk || aktivtSvarKommentarId) {
-        await beraknaAllaPdfSammanfattningar();
+      if (aktivPopruta || aktivtPolygonUtkast || aktivtRutaUtkast || aktivRedigeringsDragning || spararTillDisk || aktivtSvarKommentarId || aktivTabellRedigeraNyckel || aktivTabellSvaraNyckel) {
+        await beraknaAllaPdfSammanfattningar([aktuellPdfNyckel]);
         return;
       }
 
@@ -1411,12 +1637,49 @@
       }
 
       ritaAllaMarkeringarOchSidopanel();
-      await beraknaAllaPdfSammanfattningar();
-      if (tabellVyModal.classList.contains('oppen')) {
-        await laddaOchRitaTabellVy();
-      }
+      uppdateraAktuellPdfBricka();
       const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
       statusText.textContent = `Synkad ${tidsStämpel} — ${aktuellPdfNyckel}`;
+    }
+
+    async function uppdateraKommentarerEfterFullSynk(andradeJsonNycklar) {
+      const nyaPdfNycklar = [];
+      for (const [nyckel, fil] of inlastaFilerKarta.entries()) {
+        if (fil.name.toLowerCase().endsWith('.pdf')) {
+          nyaPdfNycklar.push(nyckel);
+        }
+      }
+      sorteraPdfNycklar(nyaPdfNycklar);
+
+      if (JSON.stringify(nyaPdfNycklar) !== JSON.stringify(inlastaPdfNycklar)) {
+        inlastaPdfNycklar = nyaPdfNycklar;
+        byggPdfTillJsonIndex();
+        fyllPdfValjareDOM(inlastaPdfNycklar);
+        if (aktuellPdfNyckel && inlastaPdfNycklar.includes(aktuellPdfNyckel)) {
+          pdfValjare.value = aktuellPdfNyckel;
+        }
+      }
+
+      const berordaPdfNycklar = [];
+      for (const [pdfNyckel, jsonSet] of pdfTillJsonNycklarKarta.entries()) {
+        for (const jsonNyckel of andradeJsonNycklar) {
+          if (jsonSet.has(jsonNyckel)) {
+            berordaPdfNycklar.push(pdfNyckel);
+            break;
+          }
+        }
+      }
+
+      if (aktuellPdfNyckel && (berordaPdfNycklar.includes(aktuellPdfNyckel) || andradeJsonNycklar.size === 0)) {
+        await uppdateraAktivPdfKommentarerVidSynk();
+      }
+
+      await beraknaAllaPdfSammanfattningar(berordaPdfNycklar.length > 0 ? berordaPdfNycklar : null);
+
+      // Uppdatera tabellvyn om den är öppen och användaren inte skriver i ett tabellfält just nu
+      if (tabellVyModal.classList.contains('oppen') && !aktivTabellRedigeraNyckel && !aktivTabellSvaraNyckel) {
+        await laddaOchRitaTabellVy();
+      }
     }
 
     function konfigureraAutosynkTimer() {
@@ -1427,16 +1690,30 @@
       const intervallMs = parseInt(synkIntervallValjare.value, 10);
       if (mappHandtag && intervallMs > 0) {
         synkPrick.classList.add('aktiv');
+        synkPrick.classList.remove('pausad');
         synkTimerId = setInterval(() => {
-          skannaMappHandtag(false);
+          if (document.hidden) return;
+          skannaMappHandtag({ arForstaInlasning: false, tvingaFullSkann: false });
         }, intervallMs);
       } else {
-        synkPrick.classList.remove('aktiv');
+        synkPrick.classList.remove('aktiv', 'pausad');
       }
     }
 
+    document.addEventListener('visibilitychange', () => {
+      if (!mappHandtag || parseInt(synkIntervallValjare.value, 10) === 0) return;
+      if (document.hidden) {
+        synkPrick.classList.remove('aktiv');
+        synkPrick.classList.add('pausad');
+      } else {
+        synkPrick.classList.remove('pausad');
+        synkPrick.classList.add('aktiv');
+        skannaMappHandtag({ arForstaInlasning: false, tvingaFullSkann: false });
+      }
+    });
+
     synkIntervallValjare.addEventListener('change', konfigureraAutosynkTimer);
-    synkaNuKnapp.addEventListener('click', () => skannaMappHandtag(false));
+    synkaNuKnapp.addEventListener('click', () => skannaMappHandtag({ arForstaInlasning: false, tvingaFullSkann: true }));
 
     function sorteraPdfNycklar(pdfNycklar) {
       pdfNycklar.sort((a, b) => {
@@ -1501,6 +1778,7 @@
       }
       sorteraPdfNycklar(pdfNycklar);
       inlastaPdfNycklar = pdfNycklar;
+      byggPdfTillJsonIndex();
       pdfSammanfattningKarta.clear();
       fyllPdfValjareDOM(pdfNycklar);
 
@@ -1527,6 +1805,10 @@
         statusText.textContent = `Laddar ${pdfNyckel}...`;
         const pdfFil = inlastaFilerKarta.get(pdfNyckel);
         if (!pdfFil) return;
+
+        if (pdfDokument && typeof pdfDokument.destroy === 'function') {
+          try { await pdfDokument.destroy(); } catch (_) {}
+        }
 
         aktuellPdfNyckel = pdfNyckel;
         aktuellPdfNamn = pdfFil.name;
@@ -1565,9 +1847,8 @@
       return sammanslagna;
     }
 
-    // Läser in och slår ihop alla .comments.json-filer för angiven PDF
     async function hamtaSammanslagnaKommentarerOchStatusForPdf(pdfNyckel) {
-      const { mapp: malMapp, filnamn: malPdfNamn } = delaMappOchFilnamn(pdfNyckel);
+      const { filnamn: malPdfNamn } = delaMappOchFilnamn(pdfNyckel);
       const prefix = `${malPdfNamn}.`;
       const suffix = `.comments.json`;
       const sammanslagna = [];
@@ -1576,106 +1857,108 @@
       const globalaSvarPerForalder = new Map();
       const anvandarSvarKarta = new Map();
 
-      for (const [nyckel, fil] of inlastaFilerKarta.entries()) {
-        const { mapp, filnamn } = delaMappOchFilnamn(nyckel);
-        if (mapp === malMapp && filnamn.startsWith(prefix) && filnamn.endsWith(suffix)) {
-          try {
-            const text = await fil.text();
-            const data = JSON.parse(text);
-            const filForfattare = (data.forfattare || data.author || filnamn.slice(prefix.length, -suffix.length)).trim().toLowerCase();
+      const jsonNycklar = pdfTillJsonNycklarKarta.get(pdfNyckel) || new Set();
 
-            const råStatusUppdateringar = data.statusUppdateringar || data.statusUpdates;
-            if (råStatusUppdateringar && typeof råStatusUppdateringar === 'object') {
-              const normaliseradStatusKarta = {};
-              for (const [kId, st] of Object.entries(råStatusUppdateringar)) {
-                if (!st || typeof st !== 'object') continue;
-                const statusKod = normaliseraBeastStatus(st.status, st.klar ?? st.resolved);
-                const stTid = st.uppdateradVid || st.updatedAt || '';
-                const stAv = st.uppdateradAv || st.updatedBy || filForfattare;
+      for (const nyckel of jsonNycklar) {
+        const fil = inlastaFilerKarta.get(nyckel);
+        if (!fil) continue;
+        const { filnamn } = delaMappOchFilnamn(nyckel);
 
-                normaliseradStatusKarta[kId] = {
+        try {
+          const data = await hamtaEllerLasJsonData(nyckel, fil);
+          const filForfattare = (data.forfattare || data.author || filnamn.slice(prefix.length, -suffix.length)).trim().toLowerCase();
+
+          const råStatusUppdateringar = data.statusUppdateringar || data.statusUpdates;
+          if (råStatusUppdateringar && typeof råStatusUppdateringar === 'object') {
+            const normaliseradStatusKarta = {};
+            for (const [kId, st] of Object.entries(råStatusUppdateringar)) {
+              if (!st || typeof st !== 'object') continue;
+              const statusKod = normaliseraBeastStatus(st.status, st.klar ?? st.resolved);
+              const stTid = st.uppdateradVid || st.updatedAt || '';
+              const stAv = st.uppdateradAv || st.updatedBy || filForfattare;
+
+              normaliseradStatusKarta[kId] = {
+                status: statusKod,
+                uppdateradVid: stTid,
+                uppdateradAv: stAv
+              };
+
+              const befintlig = globalStatusKarta.get(kId);
+              if (!befintlig || stTid >= (befintlig.uppdateradVid || '')) {
+                globalStatusKarta.set(kId, {
                   status: statusKod,
                   uppdateradVid: stTid,
                   uppdateradAv: stAv
-                };
-
-                const befintlig = globalStatusKarta.get(kId);
-                if (!befintlig || stTid >= (befintlig.uppdateradVid || '')) {
-                  globalStatusKarta.set(kId, {
-                    status: statusKod,
-                    uppdateradVid: stTid,
-                    uppdateradAv: stAv
-                  });
-                }
-              }
-              anvandarStatusKarta.set(filForfattare, normaliseradStatusKarta);
-            }
-
-            const råSvarLista = data.svar || data.replies;
-            if (Array.isArray(råSvarLista)) {
-              const normaliseradeForfattarSvar = [];
-              for (const s of råSvarLista) {
-                const foralderId = s?.foralderId || s?.parentId;
-                const innehall = s?.innehall || s?.content;
-                if (!s || !foralderId || !innehall) continue;
-                const svarObjekt = {
-                  id: s.id || ('s-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
-                  foralderId,
-                  forfattare: filForfattare,
-                  innehall,
-                  skapadVid: s.skapadVid || s.createdAt || '',
-                  farg: s.farg || s.color || hamtaForfattarFarg(filForfattare)
-                };
-                normaliseradeForfattarSvar.push(svarObjekt);
-                if (!globalaSvarPerForalder.has(foralderId)) {
-                  globalaSvarPerForalder.set(foralderId, []);
-                }
-                globalaSvarPerForalder.get(foralderId).push(svarObjekt);
-              }
-              anvandarSvarKarta.set(filForfattare, normaliseradeForfattarSvar);
-            }
-
-            const råKommentarer = data.kommentarer || data.comments;
-            if (Array.isArray(råKommentarer)) {
-              for (const k of råKommentarer) {
-                const råPunkter = k.punkter || k.points;
-                const normaliseradePunkter = Array.isArray(råPunkter)
-                  ? råPunkter.map(p => ({
-                      xProcent: Number(p.xProcent ?? p.xPercent ?? 0),
-                      yProcent: Number(p.yProcent ?? p.yPercent ?? 0)
-                    }))
-                  : undefined;
-
-                const råTyp = k.typ || k.type;
-                let normaliseradTyp = 'nal';
-                if (råTyp === 'ruta' || råTyp === 'box') {
-                  normaliseradTyp = 'ruta';
-                } else if (råTyp === 'polygon' || (Array.isArray(normaliseradePunkter) && normaliseradePunkter.length >= 3)) {
-                  normaliseradTyp = 'polygon';
-                }
-
-                const statusKod = normaliseraBeastStatus(k.status, k.klar ?? k.resolved);
-
-                sammanslagna.push({
-                  id: k.id,
-                  typ: normaliseradTyp,
-                  sida: k.sida ?? k.page ?? 1,
-                  xProcent: Number(k.xProcent ?? k.xPercent ?? 0),
-                  yProcent: Number(k.yProcent ?? k.yPercent ?? 0),
-                  punkter: normaliseradePunkter,
-                  innehall: k.innehall ?? k.content ?? '',
-                  skapadVid: k.skapadVid || k.createdAt || '',
-                  forfattare: filForfattare,
-                  status: statusKod,
-                  statusUppdateradVid: k.statusUppdateradVid || k.statusUpdatedAt || k.skapadVid || k.createdAt || '',
-                  statusUppdateradAv: k.statusUppdateradAv || k.klarAv || k.resolvedBy || filForfattare,
-                  svar: []
                 });
               }
             }
-          } catch (fel) {
-            console.warn(`Fel vid tolkning av ${nyckel}:`, fel);
+            anvandarStatusKarta.set(filForfattare, normaliseradStatusKarta);
           }
+
+          const råSvarLista = data.svar || data.replies;
+          if (Array.isArray(råSvarLista)) {
+            const normaliseradeForfattarSvar = [];
+            for (const s of råSvarLista) {
+              const foralderId = s?.foralderId || s?.parentId;
+              const innehall = s?.innehall || s?.content;
+              if (!s || !foralderId || !innehall) continue;
+              const svarObjekt = {
+                id: s.id || ('s-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
+                foralderId,
+                forfattare: filForfattare,
+                innehall,
+                skapadVid: s.skapadVid || s.createdAt || '',
+                farg: s.farg || s.color || hamtaForfattarFarg(filForfattare)
+              };
+              normaliseradeForfattarSvar.push(svarObjekt);
+              if (!globalaSvarPerForalder.has(foralderId)) {
+                globalaSvarPerForalder.set(foralderId, []);
+              }
+              globalaSvarPerForalder.get(foralderId).push(svarObjekt);
+            }
+            anvandarSvarKarta.set(filForfattare, normaliseradeForfattarSvar);
+          }
+
+          const råKommentarer = data.kommentarer || data.comments;
+          if (Array.isArray(råKommentarer)) {
+            for (const k of råKommentarer) {
+              const råPunkter = k.punkter || k.points;
+              const normaliseradePunkter = Array.isArray(råPunkter)
+                ? råPunkter.map(p => ({
+                    xProcent: Number(p.xProcent ?? p.xPercent ?? 0),
+                    yProcent: Number(p.yProcent ?? p.yPercent ?? 0)
+                  }))
+                : undefined;
+
+              const råTyp = k.typ || k.type;
+              let normaliseradTyp = 'nal';
+              if (råTyp === 'ruta' || råTyp === 'box') {
+                normaliseradTyp = 'ruta';
+              } else if (råTyp === 'polygon' || (Array.isArray(normaliseradePunkter) && normaliseradePunkter.length >= 3)) {
+                normaliseradTyp = 'polygon';
+              }
+
+              const statusKod = normaliseraBeastStatus(k.status, k.klar ?? k.resolved);
+
+              sammanslagna.push({
+                id: k.id,
+                typ: normaliseradTyp,
+                sida: k.sida ?? k.page ?? 1,
+                xProcent: Number(k.xProcent ?? k.xPercent ?? 0),
+                yProcent: Number(k.yProcent ?? k.yPercent ?? 0),
+                punkter: normaliseradePunkter,
+                innehall: k.innehall ?? k.content ?? '',
+                skapadVid: k.skapadVid || k.createdAt || '',
+                forfattare: filForfattare,
+                status: statusKod,
+                statusUppdateradVid: k.statusUppdateradVid || k.statusUpdatedAt || k.skapadVid || k.createdAt || '',
+                statusUppdateradAv: k.statusUppdateradAv || k.klarAv || k.resolvedBy || filForfattare,
+                svar: []
+              });
+            }
+          }
+        } catch (fel) {
+          console.warn(`Fel vid tolkning av ${nyckel}:`, fel);
         }
       }
 
@@ -1767,25 +2050,84 @@
       ritaAllaMarkeringarOchSidopanel();
     }
 
+    /* --- LAZY RENDERING AV PDF-SIDOR (INTERSECTION OBSERVER) --- */
+    async function ritaEnskildSidaCanvas(behallare) {
+      if (behallare.dataset.ritad === 'true' || behallare.dataset.ritarNu === 'true') return;
+      behallare.dataset.ritarNu = 'true';
+
+      const sidNr = parseInt(behallare.dataset.sidNummer, 10);
+      const malPdf = pdfDokument;
+
+      try {
+        const sida = await malPdf.getPage(sidNr);
+        if (pdfDokument !== malPdf) return;
+
+        const visningsomrade = sida.getViewport({ scale: aktuellSkala });
+        const canvas = document.createElement('canvas');
+        canvas.width = visningsomrade.width;
+        canvas.height = visningsomrade.height;
+        const kontext = canvas.getContext('2d');
+
+        await sida.render({ canvasContext: kontext, viewport: visningsomrade }).promise;
+
+        const laddarEtikett = behallare.querySelector('.sid-laddar-etikett');
+        if (laddarEtikett) laddarEtikett.remove();
+
+        behallare.insertBefore(canvas, behallare.firstChild);
+        behallare.dataset.ritad = 'true';
+      } catch (fel) {
+        console.warn(`Kunde inte rita sida ${sidNr}:`, fel);
+      } finally {
+        behallare.dataset.ritarNu = 'false';
+      }
+    }
+
     async function ritaAllaSidor() {
+      if (sidObservator) {
+        sidObservator.disconnect();
+        sidObservator = null;
+      }
+
       pdfVisningsyta.innerHTML = '';
       stangAktivPopruta();
       avbrytPolygonUtkast();
       avbrytRutaUtkast();
 
+      const forstaSida = await pdfDokument.getPage(1);
+      const standardVy = forstaSida.getViewport({ scale: aktuellSkala });
+
+      sidObservator = new IntersectionObserver((poster) => {
+        for (const post of poster) {
+          if (post.isIntersecting) {
+            ritaEnskildSidaCanvas(post.target);
+            sidObservator.unobserve(post.target);
+          }
+        }
+      }, {
+        root: pdfVisningsyta,
+        rootMargin: '600px 0px'
+      });
+
       for (let sidNr = 1; sidNr <= pdfDokument.numPages; sidNr++) {
-        const sida = await pdfDokument.getPage(sidNr);
-        const visningsomrade = sida.getViewport({ scale: aktuellSkala });
+        let sidBredd = standardVy.width;
+        let sidHojd = standardVy.height;
+        if (pdfDokument.numPages <= 30 && sidNr > 1) {
+          const s = await pdfDokument.getPage(sidNr);
+          const v = s.getViewport({ scale: aktuellSkala });
+          sidBredd = v.width;
+          sidHojd = v.height;
+        }
 
         const behallare = document.createElement('div');
         behallare.className = 'sid-behallare';
-        behallare.style.width = `${visningsomrade.width}px`;
-        behallare.style.height = `${visningsomrade.height}px`;
+        behallare.dataset.sidNummer = sidNr;
+        behallare.style.width = `${sidBredd}px`;
+        behallare.style.height = `${sidHojd}px`;
 
-        const canvas = document.createElement('canvas');
-        canvas.width = visningsomrade.width;
-        canvas.height = visningsomrade.height;
-        const kontext = canvas.getContext('2d');
+        const laddarDiv = document.createElement('div');
+        laddarDiv.className = 'sid-laddar-etikett';
+        laddarDiv.textContent = `Laddar sida ${sidNr}...`;
+        behallare.appendChild(laddarDiv);
 
         const lager = document.createElement('div');
         lager.className = 'kommentar-lager';
@@ -1840,11 +2182,9 @@
           }
         });
 
-        behallare.appendChild(canvas);
         behallare.appendChild(lager);
         pdfVisningsyta.appendChild(behallare);
-
-        await sida.render({ canvasContext: kontext, viewport: visningsomrade }).promise;
+        sidObservator.observe(behallare);
       }
 
       ritaAllaMarkeringarOchSidopanel();
@@ -2264,6 +2604,12 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (tabellVyModal.classList.contains('oppen')) {
+          if (aktivTabellRedigeraNyckel || aktivTabellSvaraNyckel) {
+            aktivTabellRedigeraNyckel = null;
+            aktivTabellSvaraNyckel = null;
+            ritaTabellVyRader();
+            return;
+          }
           stangTabellVy();
           return;
         }
@@ -2450,11 +2796,15 @@
 
     async function hamtaUndermappHandtag(rotHandtag, mappSokvag) {
       if (!mappSokvag) return rotHandtag;
+      if (mappHandtagCache.has(mappSokvag)) {
+        return mappHandtagCache.get(mappSokvag);
+      }
       const delar = mappSokvag.split('/').filter(Boolean);
       let aktuell = rotHandtag;
       for (const del of delar) {
         aktuell = await aktuell.getDirectoryHandle(del, { create: true });
       }
+      mappHandtagCache.set(mappSokvag, aktuell);
       return aktuell;
     }
 
@@ -2504,7 +2854,7 @@
           id, foralderId, forfattare, innehall, skapadVid, farg
         }));
 
-      const jsonInnehall = JSON.stringify({
+      const dataObjekt = {
         pdfFil: aktuellPdfNamn,
         pdfSokvag: aktuellPdfNyckel,
         forfattare: aktuellAnvandare,
@@ -2512,7 +2862,9 @@
         kommentarer: minaKommentarer,
         statusUppdateringar: minaStatusUppdateringar,
         svar: renaMinaSvar
-      }, null, 2);
+      };
+
+      const jsonInnehall = JSON.stringify(dataObjekt, null, 2);
 
       spararTillDisk = true;
       try {
@@ -2527,6 +2879,12 @@
         const sidecarNyckel = mapp ? `${mapp}/${sidecarFilnamn}` : sidecarFilnamn;
         inlastaFilerKarta.set(sidecarNyckel, uppdateradFil);
         filSenastAndradKarta.set(sidecarNyckel, uppdateradFil.lastModified);
+        jsonInnehallCache.set(sidecarNyckel, { lastModified: uppdateradFil.lastModified, data: dataObjekt });
+
+        if (!pdfTillJsonNycklarKarta.has(aktuellPdfNyckel)) {
+          pdfTillJsonNycklarKarta.set(aktuellPdfNyckel, new Set());
+        }
+        pdfTillJsonNycklarKarta.get(aktuellPdfNyckel).add(sidecarNyckel);
 
         harOsparadeAndringar = false;
         const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
@@ -2543,10 +2901,10 @@
       }
     }
 
-    // Direktsparning av statusändring i en annan PDF-fil från den globala tabellvyn
-    async function sparaStatusForAnnanPdf(pdfNyckel, kommentarId, nyStatusKod) {
+    // Generell funktion för att uppdatera valfri PDF-fils sidecar direkt från tabellvyn (för status, svar, redigering och radering)
+    async function uppdateraSidecarForValfriPdf(pdfNyckel, muteraCallback) {
       const aktuellAnvandare = kontrolleraEpostEllerVarna();
-      if (!aktuellAnvandare || !mappHandtag) return;
+      if (!aktuellAnvandare || !mappHandtag) return false;
 
       const { mapp, filnamn: pdfFilnamn } = delaMappOchFilnamn(pdfNyckel);
       const sidecarFilnamn = `${pdfFilnamn}.${aktuellAnvandare}.comments.json`;
@@ -2566,36 +2924,22 @@
       const befintligFil = inlastaFilerKarta.get(sidecarNyckel);
       if (befintligFil) {
         try {
-          const parsed = JSON.parse(await befintligFil.text());
+          const parsed = await hamtaEllerLasJsonData(sidecarNyckel, befintligFil);
           befintligData = {
             pdfFil: pdfFilnamn,
             pdfSokvag: pdfNyckel,
             forfattare: aktuellAnvandare,
             senastUppdaterad: nu,
-            kommentarer: parsed.kommentarer || parsed.comments || [],
-            statusUppdateringar: parsed.statusUppdateringar || parsed.statusUpdates || {},
-            svar: parsed.svar || parsed.replies || []
+            kommentarer: Array.isArray(parsed.kommentarer || parsed.comments) ? [...(parsed.kommentarer || parsed.comments)] : [],
+            statusUppdateringar: { ...(parsed.statusUppdateringar || parsed.statusUpdates || {}) },
+            svar: Array.isArray(parsed.svar || parsed.replies) ? [...(parsed.svar || parsed.replies)] : []
           };
         } catch (fel) {
           console.warn('Kunde inte läsa befintlig sidecar vid tabelluppdatering:', fel);
         }
       }
 
-      befintligData.statusUppdateringar[kommentarId] = {
-        status: nyStatusKod,
-        uppdateradVid: nu,
-        uppdateradAv: aktuellAnvandare
-      };
-
-      // Om kommentaren är skapad av användaren själv, uppdatera även direkt på kommentarobjektet
-      for (const k of befintligData.kommentarer) {
-        if (k.id === kommentarId) {
-          k.status = nyStatusKod;
-          k.farg = hamtaStatusInfo(nyStatusKod).farg;
-          k.statusUppdateradVid = nu;
-          k.statusUppdateradAv = aktuellAnvandare;
-        }
-      }
+      muteraCallback(befintligData, aktuellAnvandare, nu);
 
       try {
         const malKatalogHandtag = await hamtaUndermappHandtag(mappHandtag, mapp);
@@ -2607,12 +2951,20 @@
         const uppdateradFil = await filHandtag.getFile();
         inlastaFilerKarta.set(sidecarNyckel, uppdateradFil);
         filSenastAndradKarta.set(sidecarNyckel, uppdateradFil.lastModified);
+        jsonInnehallCache.set(sidecarNyckel, { lastModified: uppdateradFil.lastModified, data: befintligData });
 
-        await beraknaAllaPdfSammanfattningar();
+        if (!pdfTillJsonNycklarKarta.has(pdfNyckel)) {
+          pdfTillJsonNycklarKarta.set(pdfNyckel, new Set());
+        }
+        pdfTillJsonNycklarKarta.get(pdfNyckel).add(sidecarNyckel);
+
+        await beraknaAllaPdfSammanfattningar([pdfNyckel]);
         const tidsStämpel = new Date().toLocaleTimeString('sv-SE');
         statusText.textContent = `Autosparad ${tidsStämpel} (${sidecarNyckel})`;
+        return true;
       } catch (fel) {
-        console.error('Misslyckades att spara statusändring från tabellvy:', fel);
+        console.error('Misslyckades att spara ändring från tabellvy:', fel);
+        return false;
       }
     }
 
@@ -2736,15 +3088,20 @@
     exporteraAllaKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
     tabellExporteraKnapp.addEventListener('click', exporteraAllaPdfTillCsv);
 
-    /* --- LOGIK FÖR GLOBAL TABELLVY (ALLA KOMMENTARER I ALLA PDF-FILER) --- */
+    /* --- LOGIK FÖR GLOBAL TABELLVY (SORTERING, DIREKTREDIGERING & SVARSTRÅDAR) --- */
     tabellVyKnapp.addEventListener('click', async () => {
       if (inlastaPdfNycklar.length === 0) return;
+      aktivTabellRedigeraNyckel = null;
+      aktivTabellSvaraNyckel = null;
       tabellVyModal.classList.add('oppen');
+      await skannaMappHandtag({ arForstaInlasning: false, tvingaFullSkann: false });
       await laddaOchRitaTabellVy();
       tabellSokFalt.focus();
     });
 
     function stangTabellVy() {
+      aktivTabellRedigeraNyckel = null;
+      aktivTabellSvaraNyckel = null;
       tabellVyModal.classList.remove('oppen');
     }
 
@@ -2752,6 +3109,35 @@
     tabellVyModal.addEventListener('click', (e) => {
       if (e.target === tabellVyModal) stangTabellVy();
     });
+
+    // Klickbara kolumnrubriker för sortering
+    tabellVyHuvudRad.querySelectorAll('th.sorterbar').forEach(th => {
+      th.addEventListener('click', () => {
+        const kolumn = th.dataset.sortKolumn;
+        if (tabellSorteringKolumn === kolumn) {
+          tabellSorteringStigande = !tabellSorteringStigande;
+        } else {
+          tabellSorteringKolumn = kolumn;
+          tabellSorteringStigande = true;
+        }
+        uppdateraTabellSorteringsRubrikerUI();
+        ritaTabellVyRader();
+      });
+    });
+
+    function uppdateraTabellSorteringsRubrikerUI() {
+      tabellVyHuvudRad.querySelectorAll('th.sorterbar').forEach(th => {
+        const kolumn = th.dataset.sortKolumn;
+        const pil = th.querySelector('.sorterings-pil');
+        if (kolumn === tabellSorteringKolumn) {
+          th.classList.add('aktiv-sortering');
+          if (pil) pil.textContent = tabellSorteringStigande ? '▲' : '▼';
+        } else {
+          th.classList.remove('aktiv-sortering');
+          if (pil) pil.textContent = '↕';
+        }
+      });
+    }
 
     tabellSokFalt.addEventListener('input', ritaTabellVyRader);
     tabellFilterPdf.addEventListener('change', ritaTabellVyRader);
@@ -2783,11 +3169,11 @@
 
       allaMappKommentarerCache = lista;
       uppdateraTabellFilterAlternativ();
+      uppdateraTabellSorteringsRubrikerUI();
       ritaTabellVyRader();
     }
 
     function uppdateraTabellFilterAlternativ() {
-      // Uppdatera PDF-filter i tabellen
       const valtPdf = tabellFilterPdf.value;
       tabellFilterPdf.innerHTML = '<option value="alla">📄 Alla PDF-dokument</option>';
       for (const pdfNyckel of inlastaPdfNycklar) {
@@ -2800,7 +3186,6 @@
         tabellFilterPdf.value = valtPdf;
       }
 
-      // Uppdatera granskarfilter i tabellen
       const valtForfattare = tabellFilterForfattare.value;
       const unikaForfattare = Array.from(new Set(allaMappKommentarerCache.map(p => p.kommentar.forfattare))).sort();
       tabellFilterForfattare.innerHTML = '<option value="alla">👤 Alla granskare</option>';
@@ -2815,6 +3200,131 @@
       }
     }
 
+    function hamtaSorteringsVardeForPost(post, kolumn) {
+      const k = post.kommentar;
+      const stInfo = hamtaStatusInfo(k.status);
+      switch (kolumn) {
+        case 'globaltNr': return post.globaltNr;
+        case 'lokaltNr': return post.lokaltNr;
+        case 'status': return stInfo.kod;
+        case 'beskrivning': return stInfo.beskrivning;
+        case 'farg': return stInfo.fargNamn;
+        case 'andradAv': return k.statusUppdateradAv || '';
+        case 'typ': return k.typ || '';
+        case 'mapp': return post.mapp;
+        case 'filnamn': return post.filnamn;
+        case 'sokvag': return post.pdfNyckel;
+        case 'sida': return k.sida;
+        case 'forfattare': return k.forfattare || '';
+        case 'kommentar': return k.innehall || '';
+        case 'svar': return formateraSvarForCsv(k.svar);
+        case 'skapadVid': return k.skapadVid || '';
+        case 'xProcent': return k.xProcent;
+        case 'yProcent': return k.yProcent;
+        default: return post.globaltNr;
+      }
+    }
+
+    // Åtgärder direkt inifrån tabellvyn (fungerar både för öppen PDF och andra PDF-filer i mappen)
+    async function tabellAndraKommentarText(post, nyText) {
+      const rensad = nyText.trim();
+      if (!rensad) return;
+      if (!kontrolleraEpostEllerVarna()) return;
+
+      if (post.pdfNyckel === aktuellPdfNyckel) {
+        post.kommentar.innehall = rensad;
+        markeraAndradOchAutospara();
+        ritaAllaMarkeringarOchSidopanel();
+      } else {
+        await uppdateraSidecarForValfriPdf(post.pdfNyckel, (data) => {
+          for (const k of data.kommentarer) {
+            if (k.id === post.kommentar.id) {
+              k.innehall = rensad;
+              if ('content' in k) delete k.content;
+            }
+          }
+        });
+      }
+      aktivTabellRedigeraNyckel = null;
+      await laddaOchRitaTabellVy();
+    }
+
+    async function tabellRaderaKommentar(post) {
+      if (!kontrolleraEpostEllerVarna()) return;
+      if (!confirm(`Vill du verkligen ta bort kommentar #${post.lokaltNr} i "${post.filnamn}"?`)) return;
+
+      const kId = post.kommentar.id;
+      if (post.pdfNyckel === aktuellPdfNyckel) {
+        allaKommentarer = allaKommentarer.filter(k => k.id !== kId);
+        delete minaStatusUppdateringar[kId];
+        minaSvar = minaSvar.filter(s => s.foralderId !== kId);
+        if (lastKommentarId === kId) lastKommentarId = null;
+        markeraAndradOchAutospara();
+        ritaAllaMarkeringarOchSidopanel();
+      } else {
+        await uppdateraSidecarForValfriPdf(post.pdfNyckel, (data) => {
+          data.kommentarer = data.kommentarer.filter(k => k.id !== kId);
+          delete data.statusUppdateringar[kId];
+          data.svar = data.svar.filter(s => (s.foralderId || s.parentId) !== kId);
+        });
+      }
+      aktivTabellRedigeraNyckel = null;
+      await laddaOchRitaTabellVy();
+    }
+
+    async function tabellLaggTillSvar(post, svarText, valdNyStatus) {
+      const innehall = svarText.trim();
+      if (!innehall) return;
+      const aktuellAnvandare = kontrolleraEpostEllerVarna();
+      if (!aktuellAnvandare) return;
+
+      if (post.pdfNyckel === aktuellPdfNyckel) {
+        laggTillSvarPaKommentar(post.kommentar, innehall, valdNyStatus || null);
+      } else {
+        await uppdateraSidecarForValfriPdf(post.pdfNyckel, (data, anvandare, nu) => {
+          data.svar.push({
+            id: 's-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            foralderId: post.kommentar.id,
+            forfattare: anvandare,
+            innehall,
+            skapadVid: nu,
+            farg: hamtaForfattarFarg(anvandare)
+          });
+
+          if (valdNyStatus && BEAST_STATUSAR[valdNyStatus]) {
+            data.statusUppdateringar[post.kommentar.id] = {
+              status: valdNyStatus,
+              uppdateradVid: nu,
+              uppdateradAv: anvandare
+            };
+            for (const k of data.kommentarer) {
+              if (k.id === post.kommentar.id) {
+                k.status = valdNyStatus;
+                k.farg = hamtaStatusInfo(valdNyStatus).farg;
+                k.statusUppdateradVid = nu;
+                k.statusUppdateradAv = anvandare;
+              }
+            }
+          }
+        });
+      }
+      aktivTabellSvaraNyckel = null;
+      await laddaOchRitaTabellVy();
+    }
+
+    async function tabellRaderaSvar(post, svarId) {
+      if (!kontrolleraEpostEllerVarna()) return;
+
+      if (post.pdfNyckel === aktuellPdfNyckel) {
+        raderaEgetSvar(post.kommentar, svarId);
+      } else {
+        await uppdateraSidecarForValfriPdf(post.pdfNyckel, (data) => {
+          data.svar = data.svar.filter(s => s.id !== svarId);
+        });
+      }
+      await laddaOchRitaTabellVy();
+    }
+
     function ritaTabellVyRader() {
       tabellVyKropp.innerHTML = '';
 
@@ -2822,6 +3332,7 @@
       const valtPdf = tabellFilterPdf.value;
       const valtForfattare = tabellFilterForfattare.value;
       const valtStatus = tabellFilterStatus.value;
+      const aktuellAnvandare = hamtaAktuellEpost();
 
       const filtrerade = allaMappKommentarerCache.filter(post => {
         const k = post.kommentar;
@@ -2853,6 +3364,20 @@
         return true;
       });
 
+      // Sortera rader efter vald kolumn och riktning
+      filtrerade.sort((a, b) => {
+        const valA = hamtaSorteringsVardeForPost(a, tabellSorteringKolumn);
+        const valB = hamtaSorteringsVardeForPost(b, tabellSorteringKolumn);
+        let jmf = 0;
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          jmf = valA - valB;
+        } else {
+          jmf = String(valA).localeCompare(String(valB), 'sv', { numeric: true, sensitivity: 'base' });
+        }
+        if (jmf === 0) jmf = a.globaltNr - b.globaltNr;
+        return tabellSorteringStigande ? jmf : -jmf;
+      });
+
       tabellVyAntal.textContent = filtrerade.length === allaMappKommentarerCache.length
         ? `(${allaMappKommentarerCache.length} rader)`
         : `(${filtrerade.length} av ${allaMappKommentarerCache.length} rader)`;
@@ -2872,6 +3397,8 @@
 
       for (const post of filtrerade) {
         const k = post.kommentar;
+        const radUnikNyckel = `${post.pdfNyckel}::${k.id}`;
+        const arEgen = Boolean(aktuellAnvandare) && k.forfattare === aktuellAnvandare;
         const stInfo = hamtaStatusInfo(k.status);
         const typEtikett = k.typ === 'ruta' ? '▭ Ruta' : (k.typ === 'polygon' ? '⬠ Polygon' : '📍 Nål');
         const ytpunkterStrang = Array.isArray(k.punkter)
@@ -2880,7 +3407,7 @@
 
         const tr = document.createElement('tr');
         if (stInfo.arHanterad) tr.classList.add('hanterad-rad');
-        tr.title = 'Klicka för att öppna dokumentet och gå till denna kommentar';
+        tr.title = 'Klicka på raden för att öppna dokumentet och gå till denna kommentar';
 
         // 1. Åtgärdsknapp (Öppna)
         const tdAtgard = document.createElement('td');
@@ -2930,7 +3457,21 @@
             andraKommentarStatus(k, nyStatus);
             await laddaOchRitaTabellVy();
           } else {
-            await sparaStatusForAnnanPdf(post.pdfNyckel, k.id, nyStatus);
+            await uppdateraSidecarForValfriPdf(post.pdfNyckel, (data, anvandare, nu) => {
+              data.statusUppdateringar[k.id] = {
+                status: nyStatus,
+                uppdateradVid: nu,
+                uppdateradAv: anvandare
+              };
+              for (const egenK of data.kommentarer) {
+                if (egenK.id === k.id) {
+                  egenK.status = nyStatus;
+                  egenK.farg = hamtaStatusInfo(nyStatus).farg;
+                  egenK.statusUppdateradVid = nu;
+                  egenK.statusUppdateradAv = anvandare;
+                }
+              }
+            });
             await laddaOchRitaTabellVy();
           }
         });
@@ -2988,16 +3529,193 @@
         tdForfattare.textContent = k.forfattare;
         tr.appendChild(tdForfattare);
 
-        // 14. Kommentar
+        // 14. Kommentar (med direktredigering & radering för egna kommentarer)
         const tdKommentar = document.createElement('td');
         tdKommentar.className = 'cell-kommentar';
-        tdKommentar.textContent = k.innehall;
+
+        if (aktivTabellRedigeraNyckel === radUnikNyckel) {
+          const redigeraBox = document.createElement('div');
+          redigeraBox.className = 'tabell-redigera-box';
+          redigeraBox.addEventListener('click', (e) => e.stopPropagation());
+
+          const textruta = document.createElement('textarea');
+          textruta.value = k.innehall;
+
+          const knappRad = document.createElement('div');
+          knappRad.className = 'svar-formular-knappar';
+
+          const avbrytKnapp = document.createElement('button');
+          avbrytKnapp.type = 'button';
+          avbrytKnapp.className = 'knapp sekundar liten-knapp';
+          avbrytKnapp.textContent = 'Avbryt';
+          avbrytKnapp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            aktivTabellRedigeraNyckel = null;
+            ritaTabellVyRader();
+          });
+
+          const sparaKnapp = document.createElement('button');
+          sparaKnapp.type = 'button';
+          sparaKnapp.className = 'knapp liten-knapp';
+          sparaKnapp.textContent = 'Spara';
+          sparaKnapp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            tabellAndraKommentarText(post, textruta.value);
+          });
+
+          knappRad.appendChild(avbrytKnapp);
+          knappRad.appendChild(sparaKnapp);
+          redigeraBox.appendChild(textruta);
+          redigeraBox.appendChild(knappRad);
+          tdKommentar.appendChild(redigeraBox);
+          setTimeout(() => textruta.focus(), 0);
+        } else {
+          const textDiv = document.createElement('div');
+          textDiv.textContent = k.innehall;
+          tdKommentar.appendChild(textDiv);
+
+          if (arEgen) {
+            const atgarderDiv = document.createElement('div');
+            atgarderDiv.className = 'tabell-cell-atgarder';
+
+            const andraKnapp = document.createElement('button');
+            andraKnapp.type = 'button';
+            andraKnapp.className = 'redigera-knapp';
+            andraKnapp.textContent = '✏️ Ändra';
+            andraKnapp.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (!kontrolleraEpostEllerVarna()) return;
+              aktivTabellRedigeraNyckel = radUnikNyckel;
+              aktivTabellSvaraNyckel = null;
+              ritaTabellVyRader();
+            });
+
+            const taBortKnapp = document.createElement('button');
+            taBortKnapp.type = 'button';
+            taBortKnapp.className = 'radera-knapp';
+            taBortKnapp.textContent = '🗑️ Ta bort';
+            taBortKnapp.addEventListener('click', (e) => {
+              e.stopPropagation();
+              tabellRaderaKommentar(post);
+            });
+
+            atgarderDiv.appendChild(andraKnapp);
+            atgarderDiv.appendChild(taBortKnapp);
+            tdKommentar.appendChild(atgarderDiv);
+          }
+        }
         tr.appendChild(tdKommentar);
 
-        // 15. Svar / Tråd
+        // 15. Svar / Tråd (med möjlighet att svara och radera egna svar direkt i tabellen)
         const tdSvar = document.createElement('td');
         tdSvar.className = 'cell-svar';
-        tdSvar.textContent = formateraSvarForCsv(k.svar);
+
+        if (Array.isArray(k.svar) && k.svar.length > 0) {
+          const svarListaDiv = document.createElement('div');
+          svarListaDiv.className = 'tabell-svar-lista';
+
+          for (const s of k.svar) {
+            const sPost = document.createElement('div');
+            sPost.className = 'tabell-svar-post';
+            sPost.style.borderLeftColor = s.farg || hamtaForfattarFarg(s.forfattare);
+
+            const sHuvud = document.createElement('div');
+            sHuvud.className = 'tabell-svar-huvud';
+
+            const sForf = document.createElement('span');
+            sForf.style.fontWeight = '700';
+            sForf.style.color = '#0f172a';
+            sForf.textContent = s.forfattare;
+            sHuvud.appendChild(sForf);
+
+            if (Boolean(aktuellAnvandare) && s.forfattare === aktuellAnvandare) {
+              const sRadera = document.createElement('button');
+              sRadera.type = 'button';
+              sRadera.className = 'radera-knapp';
+              sRadera.textContent = '×';
+              sRadera.title = 'Ta bort mitt svar';
+              sRadera.addEventListener('click', (e) => {
+                e.stopPropagation();
+                tabellRaderaSvar(post, s.id);
+              });
+              sHuvud.appendChild(sRadera);
+            }
+
+            const sInnehall = document.createElement('div');
+            sInnehall.textContent = s.innehall;
+
+            sPost.appendChild(sHuvud);
+            sPost.appendChild(sInnehall);
+            svarListaDiv.appendChild(sPost);
+          }
+          tdSvar.appendChild(svarListaDiv);
+        }
+
+        if (aktivTabellSvaraNyckel === radUnikNyckel) {
+          const svarBox = document.createElement('div');
+          svarBox.className = 'tabell-redigera-box';
+          svarBox.addEventListener('click', (e) => e.stopPropagation());
+
+          const svarTextruta = document.createElement('textarea');
+          svarTextruta.placeholder = 'Skriv ett svar i tråden...';
+
+          const statusValjareSvar = document.createElement('select');
+          const behallOpt = document.createElement('option');
+          behallOpt.value = '';
+          behallOpt.textContent = `Behåll status (${stInfo.kod})`;
+          statusValjareSvar.appendChild(behallOpt);
+
+          for (const stObj of Object.values(BEAST_STATUSAR)) {
+            if (stObj.kod === stInfo.kod) continue;
+            const opt = document.createElement('option');
+            opt.value = stObj.kod;
+            opt.textContent = `Byt till: ${stObj.kod}`;
+            statusValjareSvar.appendChild(opt);
+          }
+
+          const knappRad = document.createElement('div');
+          knappRad.className = 'svar-formular-knappar';
+
+          const avbrytKnapp = document.createElement('button');
+          avbrytKnapp.type = 'button';
+          avbrytKnapp.className = 'knapp sekundar liten-knapp';
+          avbrytKnapp.textContent = 'Avbryt';
+          avbrytKnapp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            aktivTabellSvaraNyckel = null;
+            ritaTabellVyRader();
+          });
+
+          const skickaKnapp = document.createElement('button');
+          skickaKnapp.type = 'button';
+          skickaKnapp.className = 'knapp liten-knapp';
+          skickaKnapp.textContent = 'Skicka svar';
+          skickaKnapp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            tabellLaggTillSvar(post, svarTextruta.value, statusValjareSvar.value || null);
+          });
+
+          knappRad.appendChild(avbrytKnapp);
+          knappRad.appendChild(skickaKnapp);
+          svarBox.appendChild(svarTextruta);
+          svarBox.appendChild(statusValjareSvar);
+          svarBox.appendChild(knappRad);
+          tdSvar.appendChild(svarBox);
+          setTimeout(() => svarTextruta.focus(), 0);
+        } else {
+          const svaraKnapp = document.createElement('button');
+          svaraKnapp.type = 'button';
+          svaraKnapp.className = 'svara-vaxla-knapp';
+          svaraKnapp.textContent = '💬 Svara';
+          svaraKnapp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!kontrolleraEpostEllerVarna()) return;
+            aktivTabellSvaraNyckel = radUnikNyckel;
+            aktivTabellRedigeraNyckel = null;
+            ritaTabellVyRader();
+          });
+          tdSvar.appendChild(svaraKnapp);
+        }
         tr.appendChild(tdSvar);
 
         // 16. Skapad datum
@@ -3041,7 +3759,6 @@
         await laddaPdfFranMinne(pdfNyckel);
       }
 
-      // Nollställ eventuella filter i sidopanelen om kommentaren skulle vara dold
       const målKommentar = allaKommentarer.find(k => k.id === kommentarId);
       if (målKommentar) {
         const index = allaKommentarer.indexOf(målKommentar);
@@ -3511,6 +4228,8 @@
       uppdateraEpostFaltUtseende();
       lastKommentarId = null;
       aktivtSvarKommentarId = null;
+      aktivTabellRedigeraNyckel = null;
+      aktivTabellSvaraNyckel = null;
       stangAktivPopruta();
 
       if (aktuellPdfNyckel) {
@@ -3520,6 +4239,9 @@
         minaSvar = anvandarSvarKarta.get(aktuellAnvandare) || [];
       }
       ritaAllaMarkeringarOchSidopanel();
+      if (tabellVyModal.classList.contains('oppen')) {
+        ritaTabellVyRader();
+      }
     });
   </script>
 </body>
